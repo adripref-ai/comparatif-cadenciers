@@ -83,7 +83,8 @@ def main():
         produits.append(dict(
             nom=p["Produit"], unite=p["Unité"], famille=p["Famille"], gagnant=gagnant, ecart=ecart, pct=pct,
             mois=mois, doutes=doutes, type=p["Type"], note=p["Remarque"] or "",
-            solide=gagnant not in ("non comparable", "seul") and mois <= 3 and doutes == 0, offres=liste))
+            solide=(gagnant not in ("non comparable", "seul") and mois <= 3 and doutes == 0
+                    and not any(o["expire"] for o in liste)), offres=liste))
 
     factures = [dict(f=x["Fournisseur"], lib=x["Libellé"], cad=x["Prix cadencier"], dcad=jour(x["Date du cadencier"]),
                      fac=x["Prix facturé"], dfac=jour(x["Date de la facture"]),

@@ -43,7 +43,7 @@ Facture d'un format inconnu : voir `references/nouveau-lecteur.md`. Sans facture
 
 ## Étape 3 · Apparier les produits
 
-Écrire `appariements.csv`, une ligne par produit et par fournisseur :
+Écrire `appariements.csv` avec le module `csv` de Python, car les libellés et les notes contiennent des virgules. Une ligne par produit et par fournisseur :
 
 `famille,produit,unite,type,fournisseur,ref,qte_forcee,note`
 
@@ -80,7 +80,7 @@ Dire simplement :
 - combien de fichiers ont été lus, et ceux qui ne l'ont pas été ;
 - combien de lignes et de produits ont été comparés, et combien de références n'ont aucun équivalent chez un autre fournisseur ;
 - qui est le moins cher, en rappelant les limites ;
-- combien de résultats sont solides : prix à moins de 3 mois d'écart et unités confirmées ;
+- combien de résultats sont solides : prix à moins de 3 mois d'écart, offres encore valables et unités confirmées ;
 - les écarts entre cadencier et factures ;
 - la liste des correspondances à valider, à passer en revue avec le client.
 

@@ -189,7 +189,7 @@ const filtre = {gagnant: null, etat: null};
 
 const comparables = D.produits.filter(p => p.gagnant !== 'non comparable' && p.gagnant !== 'seul');
 const ETATS = [
-  {id: 'solide', cls: 'ok', txt: 'résultats solides : prix récents et unités confirmées', test: p => p.solide},
+  {id: 'solide', cls: 'ok', txt: 'résultats solides : prix récents, offres en cours, unités confirmées', test: p => p.solide},
   {id: 'dates', cls: 'warn', txt: 'avec plus de 3 mois entre les prix', test: p => p.mois > 3},
   {id: 'unite', cls: 'warn', txt: 'avec une unité à confirmer', test: p => p.doutes > 0},
   {id: 'ecart', cls: 'bad', txt: 'avec un écart de plus de 50 %, à contrôler', test: p => p.pct > .5},

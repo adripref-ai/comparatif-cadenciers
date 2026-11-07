@@ -24,6 +24,10 @@ Pièges rencontrés sur de vrais cadenciers. Relire chaque ligne de `tarifs.csv`
 - Une facture avec promotion ne vaut pas prix normal : le classeur retient le dernier prix hors promotion.
 - Chez Sysco, un prix barré est une référence catalogue, pas le prix normal du client.
 
+## État du produit
+
+- Sysco : la pastille S marque un surgelé, le lecteur ajoute « (surgelé) » au libellé. Ne jamais le rapprocher d'un produit sec ou frais.
+
 ## Dates
 
 - Un document sans date prend sa date interne de PDF, ou à défaut celle du fichier. Demander la vraie date et la mettre dans `sources.csv`.

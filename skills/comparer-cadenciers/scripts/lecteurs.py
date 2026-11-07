@@ -95,7 +95,7 @@ def ligne(fournisseur, doc, date_tarif, source_date, fin, ref, libelle, cond, pr
 
 # ---------- Sysco : offre tarifaire PDF ----------
 
-SYSCO = re.compile(r"^[A-Z] (\d{5}) (.+?) (UE|FR|FRI|UN|BE|[A-Z]{2,3}) (\d+ [a-z]{2}\b.*?) "
+SYSCO = re.compile(r"^([A-Z]) (\d{5}) (.+?) (UE|FR|FRI|UN|BE|[A-Z]{2,3}) (\d+ [a-z]{2}\b.*?) "
                    r"(KG|L|PC|ST|BT|CT|BO|BI) (\d+\.\d{2})( X)?$")
 
 
@@ -112,8 +112,10 @@ def lire_sysco(p):
             m = SYSCO.match(t)
             if not m:
                 continue
-            ref, lib, _ori, cond, uf, prix, _ = m.groups()
+            etat, ref, lib, _ori, cond, uf, prix, _ = m.groups()
             prix = nombre(prix)
+            if etat == "S":  # pastille S de l'offre : un surgelé ne se rapproche pas d'un sec ou d'un frais
+                lib += " (surgelé)"
             if uf in ("KG", "L"):
                 out.append(ligne("Sysco", p.name, date_fr(debut), "document", date_fr(fin), ref, lib, cond,
                                  prix, "€/" + uf.replace("KG", "kg"), 1, uf.replace("KG", "kg")))
