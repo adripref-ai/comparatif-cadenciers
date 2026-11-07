@@ -1,6 +1,6 @@
 ---
 name: comparer-cadenciers
-description: Compare les prix des fournisseurs d'un restaurant ou d'un commerce à partir de leurs cadenciers (PDF ou Excel), ramène tout au kg ou au litre, contrôle sur les factures et produit un classeur Excel et une page interactive en couleurs. À utiliser quand l'utilisateur dit « compare mes cadenciers », « comparatif fournisseurs », « quel fournisseur est le moins cher », « compare ces tarifs », « ajoute ce cadencier », « mets à jour le comparatif », ou fournit plusieurs tarifs de fournisseurs à mettre en face.
+description: Compare les prix des fournisseurs d'un restaurant ou d'un commerce à partir de leurs cadenciers (PDF ou Excel), ramène tout au kg ou au litre, contrôle sur les factures et produit un classeur Excel et une page interactive en couleurs, avec une mercuriale de tous les fournisseurs et un cadencier de commande (stocks, consommations, jours de livraison, quantités à commander). À utiliser quand l'utilisateur dit « compare mes cadenciers », « comparatif fournisseurs », « quel fournisseur est le moins cher », « compare ces tarifs », « ajoute ce cadencier », « mets à jour le comparatif », « fais ma mercuriale », « cadencier de commande », « qu'est-ce que je dois commander », « mets à jour mes stocks », ou fournit plusieurs tarifs de fournisseurs à mettre en face.
 ---
 
 # Comparer des cadenciers
@@ -39,6 +39,8 @@ Lancer `scripts/controler_factures.py <dossier>`, puis lire `controle_factures.c
 - un prix hors promotion à moins de 30 % du cadencier confirme son unité. Un petit écart signale un prix brut, un cadencier périmé ou une promotion ;
 - au-delà de 30 %, la facture est sans doute dans une autre unité (un carton pour une bouteille) : son prix n'est pas retenu, la ligne reste « à vérifier » et la note de lecture le dit.
 
+Le script écrit aussi `achats.csv` : chaque ligne achetée, avec sa quantité et sa date de livraison. Il sert au cadencier de commande.
+
 Facture d'un format inconnu, PDF ou non : voir `references/nouveau-lecteur.md`. Une unité supposée par le lecteur (prix à la bouteille ou au colis, au litre ou au fût) reste « à vérifier » tant qu'aucune facture ne la confirme : le dire. Une quantité lue sans ambiguïté dans le libellé (`1L`, `500g`) est sûre.
 
 ## Étape 3 · Apparier les produits
@@ -59,9 +61,18 @@ Ne mettre que les produits présents chez au moins deux fournisseurs, avec une s
 
 Continuer sans attendre. Seule une personne du métier sait si deux produits se remplacent : tant qu'elle n'a pas validé les `equivalent` et `different`, annoncer le comparatif comme provisoire. Présenter cette liste à l'étape 6.
 
+## Étape 3 bis · Préparer la mercuriale et le cadencier de commande
+
+1. Lancer `scripts/preparer_cadencier.py <dossier>`. Il crée ou complète, sans jamais effacer une saisie :
+   - `fournisseurs.csv` : jours de livraison et livraisons par semaine déduits des factures, délai de commande (1 jour par défaut), franco. Compléter ce qu'un document donne : Sysco imprime ses « Jours de livraison » (`Ma J V` s'écrit `mar jeu ven`). Un jour suivi de `?` vient d'une seule livraison : le faire confirmer.
+   - `stocks.csv` : une ligne par référence achetée. Le client y met son stock et sa date, et peut y imposer une consommation par semaine (`conso_semaine`) quand l'estimation est fausse ou absente.
+2. Écrire `familles.csv` (`fournisseur,ref,famille`) pour les références qui ne sont pas dans `appariements.csv`, avec les mêmes familles. Sinon elles restent « À classer » dans la mercuriale.
+3. La consommation par semaine s'estime sur les quantités achetées, rapportées à la période où l'on observe le fournisseur. Elle suppose que le stock ne bouge pas d'une livraison à l'autre : la faire valider. Avec une seule livraison et un rythme inconnu, elle reste à saisir.
+4. `securite_jours` dans `config.json` règle les jours de stock de sécurité (2 par défaut).
+
 ## Étape 4 · Construire le classeur
 
-1. Lancer `scripts/comparer.py <dossier>`. Il refuse une référence absente, une unité incohérente ou mélangée, deux références d'un même fournisseur pour un produit, un type ou une `qte_forcee` illisibles : corriger `appariements.csv`.
+1. Lancer `scripts/comparer.py <dossier>`. Il ajoute les onglets Mercuriale (tous les fournisseurs, tous les tarifs, dernier prix payé, verdict du comparatif) et Cadencier de commande (consommation, livraisons, stock, quantité à commander arrondie au colis, montant estimé par fournisseur). Les cases en bleu se corrigent dans Excel. Il refuse une référence absente, une unité incohérente ou mélangée, deux références d'un même fournisseur pour un produit, un type ou une `qte_forcee` illisibles : corriger `appariements.csv`.
 2. Lancer `scripts/calculer_classeur.py <dossier>/Comparatif-fournisseurs.xlsx`. Il répond `CALCULE`, `PAS_CALCULE` avec la raison, ou `PAS_DE_TABLEUR`. Les deux dernières réponses ne sont pas bloquantes.
 3. Si le classeur a été calculé, vérifier qu'il n'a aucune erreur de formule. Expliquer ou corriger chaque écart supérieur à 50 %.
 
@@ -89,6 +100,12 @@ Corriger `appariements.csv` d'après ses réponses, mettre `provisoire` à `fals
 
 Ne pas présenter comme une économie certaine une comparaison de prix d'âges différents. Le franco, les remises de fin d'année et les frais de livraison ne sont pas dans les cadenciers.
 
+Pour le cadencier de commande, dire aussi quelles consommations sont estimées et sur combien de livraisons, quels fournisseurs n'ont pas de jours de livraison connus, et que les stocks sont à saisir. La page permet de saisir un stock et de voir tout de suite la quantité à commander. Ces saisies restent dans le navigateur : le bouton « Copier les stocks » les copie pour `stocks.csv`.
+
+## Commander
+
+Quand le client donne ses stocks (liste, photo d'inventaire, collage depuis la page) : les reporter dans `stocks.csv` avec la date, puis relancer les étapes 4 et 5. Donner, par fournisseur, les quantités à commander et le montant estimé. Rappeler le prochain jour de livraison et, quand un autre fournisseur est moins cher sur un produit, le signaler sans changer la commande. Ne jamais passer la commande soi-même.
+
 ## Mettre à jour
 
-Pour un nouveau cadencier, l'ajouter à `sources.csv` sans retirer l'ancien : le plus récent sert au comparatif, et l'onglet Évolutions montre les changements, au kg ou au litre quand c'est possible. Une référence écrite avec ou sans ses zéros en tête (`0002641`, `2641`) reste la même. Relancer les étapes 1, 2, 4 et 5.
+Pour un nouveau cadencier, l'ajouter à `sources.csv` sans retirer l'ancien : le plus récent sert au comparatif, et l'onglet Évolutions montre les changements, au kg ou au litre quand c'est possible. Une référence écrite avec ou sans ses zéros en tête (`0002641`, `2641`) reste la même. Relancer les étapes 1, 2, 3 bis, 4 et 5. Pour de nouvelles factures, les déposer dans `factures/` : les consommations s'affinent à chaque livraison.

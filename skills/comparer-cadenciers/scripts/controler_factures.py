@@ -22,12 +22,17 @@ import fitz
 from lecteurs import cle_ref, lignes_pdf, nombre
 
 
+CHAMPS_ACHATS = ["fournisseur", "ref", "libelle", "date_livraison", "qte", "unite", "colisage", "prix", "promo", "facture"]
+
+
 def date_iso(j, m, a):
     return f"{a}-{m}-{j}"
 
 
 def lire_facture(p):
-    """Renvoie (fournisseur, date, [(ref, libellé, prix, promo)]) ou None."""
+    """Renvoie (fournisseur, date, lignes) ou None.
+    Chaque ligne vaut (ref, libellé, prix, promo, qte, date de livraison, unité, colisage). Les quatre
+    derniers peuvent manquer ou valoir None : la date de livraison est alors celle de la facture."""
     try:
         doc = fitz.open(p)
     except Exception:
@@ -57,26 +62,37 @@ def lire_facture(p):
     j, m, a = d.groups()
     quand = date_iso(j, m, a if len(a) == 4 else "20" + a)
     out = []
+    livraison = quand  # une facture peut regrouper plusieurs livraisons, chacune avec sa date
     for page in doc:
         lignes = [" ".join(w[4] for w in mots) for mots in lignes_pdf(page)]
         for i, t in enumerate(lignes):
             suivante = lignes[i + 1] if i + 1 < len(lignes) else ""
+            dl = re.search(r"(?:Date d'expédition|livré le)\s*:?\s*(\d{2})/(\d{2})/(\d{4})", t)
+            if dl:
+                livraison = date_iso(*dl.groups())
             if four == "Comptoir du Littoral":
+                # Quantité en unités (bouteilles, litres pour un fût), puis nombre de colis
                 x = re.match(r"^(\d{1,6}) (.+?) (\d+) (\d+) (\d+\.\d{4})\b", t)
                 if x:
-                    out.append((x.group(1), x.group(2), float(x.group(5)), False))
+                    cols, colis = int(x.group(3)), int(x.group(4))
+                    unite = "L" if re.search(r"F[UÛ]T", x.group(2), re.I) else "pièce"
+                    out.append((x.group(1), x.group(2), float(x.group(5)), False, cols, livraison, unite,
+                                cols // colis if colis and cols % colis == 0 else None))
             elif four == "Episaveurs":
-                x = re.match(r"^\d+/ (\d+) (.+?) [\d,]+ \S+ [\d,]+ \S+ (\d+,\d{3}) ", t)
+                x = re.match(r"^\d+/ (\d+) (.+?) ([\d,]+) (\S+) [\d,]+ \S+ (\d+,\d{3}) ", t)
                 if x:
-                    out.append((x.group(1), x.group(2), nombre(x.group(3)), suivante.startswith("Promo")))
+                    out.append((x.group(1), x.group(2), nombre(x.group(5)), suivante.startswith("Promo"),
+                                nombre(x.group(3)), livraison, x.group(4), None))
             elif four == "Sysco":
                 x = re.search(r"\b(\d{5}) (.+?) [FSHA] ([\d,]+) ([A-Z]{1,3}) (\d+,\d{3}) \d ", t)
                 if x:
-                    out.append((x.group(1), x.group(2), nombre(x.group(5)), "PROMO" in t))
+                    out.append((x.group(1), x.group(2), nombre(x.group(5)), "PROMO" in t,
+                                nombre(x.group(3)), livraison, x.group(4), None))
             else:
                 x = re.match(r"^(\d{4,6}) (\S+) (.+) ([\d,]+) (\d+,\d{3}) \d (\d+,\d{3}) ([\d,]+)$", t)
                 if x:
-                    out.append((x.group(1), x.group(3), nombre(x.group(5)), False))
+                    out.append((x.group(1), x.group(3), nombre(x.group(5)), False,
+                                nombre(x.group(4)), livraison, x.group(2), None))
     return four, quand, out
 
 
@@ -90,6 +106,7 @@ def main():
         sys.path.insert(0, str(ICI))
         lecteurs_client = getattr(importlib.import_module("lecteurs_client"), "FACTURES", [])
     achats = defaultdict(list)
+    releve = []  # chaque ligne achetée, pour estimer les consommations du cadencier de commande
     compte = defaultdict(int)
     deja_lues = set()
     dossier = Path(config.get("factures") or "factures").expanduser()
@@ -109,13 +126,16 @@ def main():
         if not r:
             continue
         four, quand, lignes = r
-        signature = (four, quand, tuple(sorted(lignes)))
+        signature = (four, quand, tuple(sorted(map(repr, lignes))))
         if signature in deja_lues:  # copie d'une facture déjà lue
             continue
         deja_lues.add(signature)
         compte[four] += 1
-        for ref, lib, prix, promo in lignes:
+        for x in lignes:
+            ref, lib, prix, promo, qte, livraison, unite, colisage = (tuple(x) + (None,) * 4)[:8]
             achats[(four, cle_ref(ref))].append((quand, prix, promo, p.name))
+            releve.append(dict(fournisseur=four, ref=ref, libelle=lib, date_livraison=livraison or quand, qte=qte if qte is not None else "",
+                               unite=unite or "", colisage=colisage or "", prix=prix, promo=int(bool(promo)), facture=p.name))
 
     tarifs = list(csv.DictReader(open(ICI / "tarifs.csv", encoding="utf-8-sig")))
     # Pour un même fournisseur et une même référence, on garde le cadencier le plus récent
@@ -146,6 +166,11 @@ def main():
         w = csv.DictWriter(f, champs)
         w.writeheader()
         w.writerows(sortie)
+    releve.sort(key=lambda x: (x["fournisseur"], cle_ref(x["ref"]), x["date_livraison"]))
+    with open(ICI / "achats.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, CHAMPS_ACHATS)
+        w.writeheader()
+        w.writerows(releve)
 
     print("Factures lues :", dict(compte))
     print(f"{'Fournisseur':22}{'réf. cadencier':>15}{'vues sur facture':>18}{'même prix':>11}{'écart > 10 %':>14}")

@@ -50,7 +50,8 @@ def main():
     config = json.load(open(dossier / "config.json", encoding="utf-8"))
     client = config["client"]
     # Une page refaite à partir d'un classeur périmé afficherait d'anciens chiffres
-    entrees = [dossier / n for n in ("tarifs.csv", "appariements.csv", "controle_factures.csv", "config.json")]
+    entrees = [dossier / n for n in ("tarifs.csv", "appariements.csv", "controle_factures.csv", "config.json",
+                                     "achats.csv", "fournisseurs.csv", "stocks.csv", "familles.csv")]
     plus_recente = max((p for p in entrees if p.exists()), key=lambda p: p.stat().st_mtime, default=None)
     if not classeur.exists() or (plus_recente and plus_recente.stat().st_mtime > classeur.stat().st_mtime):
         sys.exit(f"Classeur absent ou plus ancien que {plus_recente.name if plus_recente else 'ses données'} : "
@@ -109,15 +110,44 @@ def main():
                        ecart=(x["Nouveau prix"] - x["Ancien prix"]) / x["Ancien prix"])
                   for x in table(wb["Évolutions"], 1)]
 
+    # Mercuriale et cadencier de commande : valeurs du classeur, verdict repris du comparatif ci-dessus
+    gagnants = {p["nom"]: p["gagnant"] for p in produits}
+    aujourdhui = date.today()
+
+    def nb(v):
+        return v if isinstance(v, (int, float)) else None
+
+    mercuriale, cadencier = [], []
+    if "Mercuriale" in wb.sheetnames:
+        for x in table(wb["Mercuriale"], 1):
+            fin = x["Fin de validité"]
+            mercuriale.append(dict(
+                fam=x["Famille"], prod=x["Produit comparé"] or "", f=x["Fournisseur"], ref=str(x["Réf."]),
+                lib=x["Libellé"], marque=x["Marque"] or "", cond=x["Conditionnement"] or "", prix=nb(x["Prix HT"]),
+                up=x["Unité de prix"] or "", pu=nb(x["Prix par kg, litre ou unité"]), u=x["Unité"] or "",
+                dtar=jour(x["Date du tarif"]), expire=isinstance(fin, datetime) and fin.date() < aujourdhui,
+                dpp=nb(x["Dernier prix payé"]), dda=jour(x["Dernier achat"]), nb=nb(x["Achats relevés"]),
+                gagnant=gagnants.get(x["Produit comparé"] or "", "")))
+    if "Cadencier de commande" in wb.sheetnames:
+        for x in table(wb["Cadencier de commande"], 1):
+            cadencier.append(dict(
+                fam=x["Famille"], prod=x["Produit comparé"] or "", f=x["Fournisseur"], ref=str(x["Réf."]),
+                lib=x["Libellé"], u=x["Unité"] or "", colis=nb(x["Colisage"]), conso=nb(x["Consommation par semaine"]),
+                base=x["Base de l'estimation"] or "", jours=x["Jours de livraison"] or "",
+                lps=nb(x["Livraisons par semaine"]), delai=nb(x["Délai de commande (jours)"]) or 0,
+                secu=nb(x["Sécurité (jours)"]) or 0, stock=nb(x["Stock"]), dstock=jour(x["Date du stock"]),
+                prix=nb(x["Dernier prix payé"]), gagnant=gagnants.get(x["Produit comparé"] or "", "")))
+
     # Un fournisseur vu sur une facture mais absent du comparatif garde quand même sa couleur
-    tous = fournisseurs + sorted({x["f"] for x in factures + evolutions} - set(fournisseurs))
+    tous = fournisseurs + sorted({x["f"] for x in factures + evolutions + mercuriale + cadencier} - set(fournisseurs))
     teintes, libres = [], iter(PALETTE * 3)
     for f in tous:
         teintes.append(COULEURS.get(f) or next(libres))
     clair = " ".join(f"--f{i}:{c[0]};" for i, c in enumerate(teintes))
     sombre = " ".join(f"--f{i}:{c[1]};" for i, c in enumerate(teintes))
 
-    donnees = dict(client=client, provisoire=config.get("provisoire", True), fournisseurs=tous, produits=produits, factures=factures, evolutions=evolutions)
+    donnees = dict(client=client, provisoire=config.get("provisoire", True), fournisseurs=tous, produits=produits,
+                   factures=factures, evolutions=evolutions, mercuriale=mercuriale, cadencier=cadencier)
     texte = json.dumps(donnees, ensure_ascii=False).replace("</", "<\\/")
     page = (ICI / "page-modele.html").read_text(encoding="utf-8")
     page = (page.replace("__TITRE__", escape(f"Comparatif {client}"))

@@ -20,6 +20,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter as L
 
 from lecteurs import SEUIL_UNITE, cle_ref, nombre, unite_confirmee
+from suivi import ajouter_onglets
 
 ICI = None
 COULEURS = {"Sysco": "1D5FA6", "Pro à Pro": "1E7A3C", "Episaveurs": "B45309",
@@ -370,6 +371,12 @@ def main():
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:H{max(len(seuls) + 1, 2)}"
 
+    # ---------- Mercuriale et cadencier de commande ----------
+    outils = dict(entete=entete, habiller=habiller, jour=jour, Font=Font, PatternFill=PatternFill,
+                  FormulaRule=FormulaRule, L=L)
+    comp = dict(premiere=premiere, dern=dern, moins_cher=L(cm)) if dern >= premiere else None
+    nb_merc, nb_cad = ajouter_onglets(wb, ICI, config, recent, produits, outils, comp)
+
     # ---------- Lisez-moi ----------
     wl = wb.create_sheet("Lisez-moi", 0)
     wl.column_dimensions["A"].width = 26
@@ -379,6 +386,8 @@ def main():
     lignes = [
         ("But", "Comparer les prix des fournisseurs à partir de leurs cadenciers" + (", contrôlés sur les factures." if factures else ". Aucune facture n'a servi au contrôle.")),
         ("Comparatif", "Un produit par ligne, un fournisseur par colonne. Le prix le plus bas ressort en vert."),
+        ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé et le verdict du comparatif."),
+        ("Cadencier de commande", "Ce que le client achète : consommation par semaine estimée sur les factures, jours de livraison, stock et quantité à commander pour tenir jusqu'à la livraison suivante, arrondie au colis. Les cases en bleu se corrigent à la main : stock, consommation, livraisons, délai, sécurité."),
         ("Détail", "D'où vient chaque prix : libellé, date, quantité, facture. Les prix en bleu se corrigent à la main, le reste suit."),
         ("Cadencier contre facture", "Prix du cadencier face au dernier prix payé, pour chaque référence retrouvée sur une facture."),
         ("Évolutions", "Prix qui ont changé entre deux cadenciers d'un même fournisseur."),
@@ -398,7 +407,8 @@ def main():
         wl.cell(i, 1).alignment = Alignment(vertical="top")
     wb.active = 1
     wb.save(SORTIE)
-    print(f"{len(produits)} produits, {n} fournisseurs, {dern_d - 1} lignes de détail -> {SORTIE.name}")
+    print(f"{len(produits)} produits, {n} fournisseurs, {dern_d - 1} lignes de détail, "
+          f"mercuriale de {nb_merc} références, cadencier de {nb_cad} références achetées -> {SORTIE.name}")
 
 
 if __name__ == "__main__":

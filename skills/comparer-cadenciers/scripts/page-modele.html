@@ -139,6 +139,8 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
 
   <div class="onglets" role="tablist" aria-label="Vues">
     <button role="tab" id="o-produits" aria-selected="true" data-v="produits">Produits</button>
+    <button role="tab" id="o-mercuriale" aria-selected="false" data-v="mercuriale">Mercuriale</button>
+    <button role="tab" id="o-commande" aria-selected="false" data-v="commande">Cadencier de commande</button>
     <button role="tab" id="o-factures" aria-selected="false" data-v="factures">Cadencier contre facture</button>
     <button role="tab" id="o-evolutions" aria-selected="false" data-v="evolutions">Évolutions</button>
   </div>
@@ -156,6 +158,29 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
       <span class="compte" id="compte"></span>
     </div>
     <div class="liste" id="liste"></div>
+  </section>
+
+  <section class="vue" id="v-mercuriale" hidden>
+    <p class="meta">Tous les fournisseurs et tous leurs tarifs, classés par famille. « Moins cher » reprend le verdict du comparatif quand le produit y figure.</p>
+    <div class="outils">
+      <input type="search" id="mq" placeholder="Chercher une référence" aria-label="Chercher une référence">
+      <select id="mfam" aria-label="Famille"></select>
+      <select id="mfo" aria-label="Fournisseur"></select>
+      <label class="case"><input type="checkbox" id="machat"> Seulement ce qui est acheté</label>
+      <span class="compte" id="mcompte"></span>
+    </div>
+    <div class="tableau defile"><table><thead><tr><th>Référence</th><th>Fournisseur</th><th class="r">Prix HT</th><th class="r">Au kg, au litre ou à l'unité</th><th>Tarif du</th><th class="r">Dernier payé</th><th>Comparatif</th></tr></thead><tbody id="mtab"></tbody></table></div>
+  </section>
+
+  <section class="vue" id="v-commande" hidden>
+    <p class="meta">Ce que le client achète, avec sa consommation par semaine estimée sur les factures. Saisis le stock : la quantité à commander couvre jusqu'à la livraison suivante, plus le délai et la sécurité, arrondie au colis. Les stocks saisis ici restent dans ce navigateur : « Copier les stocks » les met au presse-papiers pour les reporter dans stocks.csv.</p>
+    <div class="outils">
+      <select id="kfo" aria-label="Fournisseur"></select>
+      <button class="lien" id="kcopie">Copier les stocks</button>
+      <span class="compte" id="kcompte"></span>
+    </div>
+    <div class="tableau defile"><table><thead><tr><th>Référence</th><th class="r">Conso. par semaine</th><th>Livraisons</th><th class="r">Stock</th><th class="r">Besoin</th><th class="r">À commander</th><th class="r">Montant</th></tr></thead><tbody id="ktab"></tbody></table></div>
+    <div id="ktotal" class="etats"></div>
   </section>
 
   <section class="vue" id="v-factures" hidden>
@@ -305,6 +330,74 @@ function dessinerEvolutions() {
       <td class="r"><span class="tag ${x.ecart < 0 ? 'ok' : 'bad'}">${x.ecart > 0 ? '+' : ''}${eur(x.ecart * 100, 1)} %</span></td></tr>`).join('') + '</tbody></table></div>';
 }
 
+function dessinerMercuriale() {
+  const q = $('mq').value.trim().toLowerCase(), fam = $('mfam').value, f = $('mfo').value, achat = $('machat').checked;
+  const l = (D.mercuriale || []).filter(x => (!q || (x.lib + ' ' + x.prod + ' ' + x.marque).toLowerCase().includes(q)) &&
+    (!fam || x.fam === fam) && (!f || x.f === f) && (!achat || x.nb));
+  $('mcompte').textContent = `${l.length} référence${l.length > 1 ? 's' : ''} sur ${(D.mercuriale || []).length}`;
+  if (!l.length) { $('mtab').innerHTML = '<tr><td colspan="7">Aucune référence ne correspond.</td></tr>'; return; }
+  let html = '', famille = null;
+  for (const x of l) {
+    if (x.fam !== famille) { famille = x.fam; html += `<tr><th colspan="7">${esc(famille)}</th></tr>`; }
+    const verdict = !x.gagnant ? '' : x.gagnant === x.f ? '<span class="tag ok">Moins cher</span>'
+      : `<span class="tag neutre">${esc(x.gagnant)}</span>`;
+    html += `<tr><td>${esc(x.lib)}<br><small>${x.prod ? esc(x.prod) + ' · ' : ''}Réf. ${esc(x.ref)}${x.cond ? ' · ' + esc(x.cond) : ''}</small></td>
+      <td><span class="point" style="${couleur(x.f)}"></span>${esc(x.f)}</td>
+      <td class="r">${eur(x.prix, 3)} €/${esc(x.up)}</td><td class="r">${x.pu == null ? '' : eur(x.pu) + ' €/' + esc(x.u)}</td>
+      <td>${jour(x.dtar)}${x.expire ? ' <span class="tag warn">expirée</span>' : ''}</td>
+      <td class="r">${x.dpp == null ? '' : eur(x.dpp, 3) + ' €'}${x.nb ? `<br><small>${x.nb} achat${x.nb > 1 ? 's' : ''}</small>` : ''}</td>
+      <td>${verdict}</td></tr>`;
+  }
+  $('mtab').innerHTML = html;
+}
+
+const CLE_STOCKS = 'stocks:' + D.client;
+let stocksSaisis = {};
+try { stocksSaisis = JSON.parse(localStorage.getItem(CLE_STOCKS) || '{}'); } catch (e) { stocksSaisis = {}; }
+const cleK = x => x.f + '|' + x.ref;
+const stockDe = x => stocksSaisis[cleK(x)] ?? x.stock;
+function commande(x) {
+  if (x.conso == null || !x.lps) return {besoin: null, qte: null, txt: 'conso. ou livraisons à saisir'};
+  const besoin = Math.round(x.conso / 7 * (7 / x.lps + x.delai + x.secu) * 100) / 100;
+  const s = stockDe(x);
+  if (s == null || s === '') return {besoin, qte: null, txt: 'stock à saisir'};
+  const c = x.colis || 1, manque = Math.max(0, besoin - s);
+  return {besoin, qte: Math.ceil(Math.round(manque / c * 1e6) / 1e6) * c};
+}
+function dessinerCommande() {
+  const f = $('kfo').value;
+  const l = (D.cadencier || []).filter(x => !f || x.f === f);
+  $('kcompte').textContent = `${l.length} référence${l.length > 1 ? 's' : ''} achetée${l.length > 1 ? 's' : ''}`;
+  if (!l.length) { $('ktab').innerHTML = '<tr><td colspan="7">Aucun achat relevé sur les factures.</td></tr>'; $('ktotal').innerHTML = ''; return; }
+  const totaux = {};
+  $('ktab').innerHTML = l.map(x => {
+    const c = commande(x), montant = c.qte != null && x.prix != null ? c.qte * x.prix : null;
+    if (montant != null) totaux[x.f] = (totaux[x.f] || 0) + montant;
+    const s = stockDe(x);
+    return `<tr><td>${esc(x.prod || x.lib)}<br><small><span class="point" style="${couleur(x.f)}"></span>${esc(x.f)} · Réf. ${esc(x.ref)}${x.colis ? ' · colis de ' + x.colis : ''}${x.gagnant && D.fournisseurs.includes(x.gagnant) && x.gagnant !== x.f ? ' · <b>moins cher : ' + esc(x.gagnant) + '</b>' : ''}</small></td>
+      <td class="r" title="${esc(x.base)}">${x.conso == null ? '—' : eur(x.conso)} ${esc(x.u)}</td>
+      <td>${esc(x.jours) || '—'}${x.lps ? `<br><small>${eur(x.lps, 0)} par semaine</small>` : ''}</td>
+      <td class="r"><input type="number" min="0" step="any" inputmode="decimal" data-k="${esc(cleK(x))}" value="${s ?? ''}" aria-label="Stock de ${esc(x.lib)}" style="width:6em;text-align:right;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 6px"></td>
+      <td class="r">${c.besoin == null ? '' : eur(c.besoin)}</td>
+      <td class="r">${c.qte == null ? `<span class="tag warn">${esc(c.txt)}</span>` : c.qte > 0 ? `<span class="tag ok">${eur(c.qte, 0)}</span>` : '0'}</td>
+      <td class="r">${montant == null ? '' : eur(montant) + ' €'}</td></tr>`;
+  }).join('');
+  $('ktotal').innerHTML = Object.entries(totaux).map(([four, t]) =>
+    `<div class="etat neutre" style="cursor:default"><b>${eur(t, 0)} €</b><span>prochaine commande estimée chez ${esc(four)}</span></div>`).join('');
+}
+$('ktab').addEventListener('change', e => {
+  const i = e.target.closest('input[data-k]'); if (!i) return;
+  if (i.value === '') delete stocksSaisis[i.dataset.k]; else stocksSaisis[i.dataset.k] = Number(i.value);
+  try { localStorage.setItem(CLE_STOCKS, JSON.stringify(stocksSaisis)); } catch (e) {}
+  dessinerCommande();
+});
+$('kcopie').addEventListener('click', async () => {
+  const lignes = ['fournisseur,ref,stock'].concat((D.cadencier || []).filter(x => stockDe(x) != null && stockDe(x) !== '')
+    .map(x => `"${x.f}",${x.ref},${stockDe(x)}`));
+  try { await navigator.clipboard.writeText(lignes.join('\n')); $('kcopie').textContent = 'Stocks copiés'; }
+  catch (e) { $('kcopie').textContent = 'Copie impossible ici'; }
+});
+
 function rafraichir() { dessinerBilan(); dessinerListe(); }
 
 document.querySelector('.bilan').addEventListener('click', e => {
@@ -315,7 +408,7 @@ document.querySelector('.bilan').addEventListener('click', e => {
 });
 document.querySelector('.onglets').addEventListener('click', e => { const b = e.target.closest('button'); if (b) montrer(b.dataset.v); });
 function montrer(v) {
-  for (const n of ['produits', 'factures', 'evolutions']) {
+  for (const n of ['produits', 'mercuriale', 'commande', 'factures', 'evolutions']) {
     $('v-' + n).hidden = n !== v;
     $('o-' + n).setAttribute('aria-selected', n === v);
   }
@@ -326,5 +419,11 @@ $('raz').addEventListener('click', () => { filtre.gagnant = filtre.etat = null; 
 
 $('fam').innerHTML = '<option value="">Toutes les familles</option>' + [...new Set(D.produits.map(p => p.famille))].map(f => `<option>${esc(f)}</option>`).join('');
 $('ffo').innerHTML = '<option value="">Tous les fournisseurs</option>' + [...new Set(D.factures.map(x => x.f))].map(f => `<option>${esc(f)}</option>`).join('');
-rafraichir(); dessinerFactures(); dessinerEvolutions();
+const options = (l, tous) => `<option value="">${tous}</option>` + [...new Set(l)].map(f => `<option>${esc(f)}</option>`).join('');
+$('mfam').innerHTML = options((D.mercuriale || []).map(x => x.fam), 'Toutes les familles');
+$('mfo').innerHTML = options((D.mercuriale || []).map(x => x.f), 'Tous les fournisseurs');
+$('kfo').innerHTML = options((D.cadencier || []).map(x => x.f), 'Tous les fournisseurs');
+['mq', 'mfam', 'mfo', 'machat'].forEach(i => $(i).addEventListener('input', dessinerMercuriale));
+$('kfo').addEventListener('input', dessinerCommande);
+rafraichir(); dessinerFactures(); dessinerEvolutions(); dessinerMercuriale(); dessinerCommande();
 </script>
