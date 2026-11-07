@@ -30,12 +30,13 @@ Pièges rencontrés sur de vrais cadenciers. Relire chaque ligne de `tarifs.csv`
 
 ## Dates
 
-- Un document sans date prend sa date interne de PDF, ou à défaut celle du fichier. Demander la vraie date et la mettre dans `sources.csv`.
-- Une offre dont la fin de validité est passée s'affiche « Offre expirée ». Demander un tarif à jour.
-- Plus de 3 mois d'écart entre deux prix comparés : résultat indicatif.
+- Un document sans date prend sa date interne de PDF, ou à défaut celle du fichier. `lire_cadenciers.py` liste ces documents. Demander la vraie date et la mettre dans `sources.csv`.
+- Une offre dont la fin de validité est passée s'affiche « Offre expirée » dans la page et « expirée » dans le classeur. Elle reste valable jusqu'à son dernier jour inclus. Demander un tarif à jour.
+- Plus de 3 mois d'écart entre deux prix comparés, au dixième de mois près : résultat indicatif. 106 jours font 3,5 mois.
 
 ## Signaux d'erreur
 
 - Écart supérieur à 50 % : d'abord suspecter une unité ou deux produits différents.
 - Prix au kg incohérent avec le métier, comme du sel à 0,04 €/kg.
-- Une facture confirme un prix, jamais une quantité.
+- Une facture confirme un prix, jamais une quantité. Elle ne confirme l'unité que si son prix hors promotion est à moins de 30 % du cadencier.
+- Sysco : une désignation peut continuer sur la ligne en dessous (« 8 % d'acidité »). Le lecteur la rattache au libellé.

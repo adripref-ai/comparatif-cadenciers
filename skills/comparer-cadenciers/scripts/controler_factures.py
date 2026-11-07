@@ -2,8 +2,9 @@
 """Compare le prix du cadencier au prix réellement payé sur les factures.
 
 Usage : controler_factures.py <dossier du client>
-Lit toutes les factures PDF du dossier indiqué dans config.json, garde pour chaque référence le dernier prix
-facturé, et écrit controle_factures.csv. Sert à deux choses : confirmer l'unité d'un
+Lit toutes les factures du dossier indiqué dans config.json (les PDF connus, et tout format qu'un lecteur
+FACTURES de lecteurs_client.py sait lire), garde pour chaque référence le dernier prix facturé, et écrit
+controle_factures.csv. Une même facture copiée deux fois ne compte qu'une fois. Sert à deux choses : confirmer l'unité d'un
 prix (à la bouteille, au litre...) et repérer un cadencier périmé ou un prix « brut ».
 """
 import csv
@@ -18,7 +19,7 @@ sys.dont_write_bytecode = True
 
 import fitz
 
-from lecteurs import lignes_pdf, nombre
+from lecteurs import cle_ref, lignes_pdf, nombre
 
 
 def date_iso(j, m, a):
@@ -84,34 +85,43 @@ def main():
         sys.exit("Usage : controler_factures.py <dossier du client>")
     ICI = Path(sys.argv[1]).expanduser()
     config = json.load(open(ICI / "config.json", encoding="utf-8"))
-    lecteurs_facture = [lire_facture]
+    lecteurs_client = []
     if (ICI / "lecteurs_client.py").exists():
         sys.path.insert(0, str(ICI))
-        lecteurs_facture = getattr(importlib.import_module("lecteurs_client"), "FACTURES", []) + lecteurs_facture
+        lecteurs_client = getattr(importlib.import_module("lecteurs_client"), "FACTURES", [])
     achats = defaultdict(list)
     compte = defaultdict(int)
+    deja_lues = set()
     dossier = Path(config.get("factures") or "factures").expanduser()
     if not dossier.is_absolute():
         dossier = ICI / dossier
     for p in sorted(dossier.glob("**/*")):
         # Les dossiers cachés contiennent souvent des doublons ou des pièces écartées
-        if p.suffix.lower() != ".pdf" or any(x.startswith(".") for x in p.relative_to(dossier).parts):
+        if not p.is_file() or any(x.startswith(".") for x in p.relative_to(dossier).parts):
             continue
-        r = next((x for x in (f(p) for f in lecteurs_facture) if x), None)
+        # Les lecteurs du client voient tous les formats ; le lecteur fourni ne lit que les PDF
+        lecteurs_facture = lecteurs_client + ([lire_facture] if p.suffix.lower() == ".pdf" else [])
+        try:
+            r = next((x for x in (f(p) for f in lecteurs_facture) if x), None)
+        except Exception as e:
+            print(f"Facture illisible, ignorée : {p.name} ({type(e).__name__} {e})")
+            continue
         if not r:
             continue
         four, quand, lignes = r
+        signature = (four, quand, tuple(sorted(lignes)))
+        if signature in deja_lues:  # copie d'une facture déjà lue
+            continue
+        deja_lues.add(signature)
         compte[four] += 1
         for ref, lib, prix, promo in lignes:
-            deja = achats[(four, ref)]
-            if not any(x[:3] == (quand, prix, promo) for x in deja):  # copie d'une même facture
-                deja.append((quand, prix, promo, p.name))
+            achats[(four, cle_ref(ref))].append((quand, prix, promo, p.name))
 
     tarifs = list(csv.DictReader(open(ICI / "tarifs.csv", encoding="utf-8-sig")))
     # Pour un même fournisseur et une même référence, on garde le cadencier le plus récent
     recent = {}
     for t in tarifs:
-        cle = (t["fournisseur"], t["ref"].lstrip("0"))
+        cle = (t["fournisseur"], cle_ref(t["ref"]))
         if cle not in recent or t["date_tarif"] > recent[cle]["date_tarif"]:
             recent[cle] = t
 

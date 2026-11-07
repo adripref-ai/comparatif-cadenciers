@@ -28,18 +28,18 @@ Ne jamais écrire les données d'un client dans le dossier du plugin.
 
 1. Ouvrir chaque fichier et reconnaître sa mise en page. Lecteurs fournis : `sysco` (offre tarifaire), `proapro` (offre), `comptoir`, `sodiboissons`, `episaveurs` (offre Excel), `saisie` (lignes relevées à la main).
 2. Mise en page inconnue, scan ou photo : suivre `references/nouveau-lecteur.md`. Un même fournisseur peut changer de mise en page d'un client à l'autre, donc vérifier avant de réutiliser un lecteur.
-3. Remplir `sources.csv` : `lecteur,fichier,date`. Renseigner `date` quand le document n'en porte pas et que la date est connue. Sinon le lecteur prend la date interne du PDF : le signaler comme à confirmer.
-4. Lancer `scripts/lire_cadenciers.py <dossier>`. Ne pas continuer tant que « annoncées » et « lues » diffèrent.
+3. Remplir `sources.csv` : `lecteur,fichier,date`. Renseigner `date` (`08/12/2025` ou `2025-12-08`) quand le document n'en porte pas et que la date est connue. Sinon le lecteur prend la date interne du PDF, ou celle du fichier : le script liste ces documents, à signaler comme dates à confirmer.
+4. Lancer `scripts/lire_cadenciers.py <dossier>`. Un fichier illisible est marqué `ILLISIBLE` et les autres sont quand même lus. Ne pas continuer tant que « annoncées » et « lues » diffèrent ou qu'un fichier reste illisible : écrire un lecteur ou faire un relevé.
 5. Relire toutes les lignes de `tarifs.csv` avec `references/regles-de-lecture.md`. Corriger le lecteur, jamais le résultat à la main : un lecteur fourni se remplace en donnant le même nom dans `lecteurs_client.py`.
 
 ## Étape 2 · Contrôler sur les factures
 
 Lancer `scripts/controler_factures.py <dossier>`, puis lire `controle_factures.csv` :
 
-- un prix identique confirme l'unité du cadencier ;
-- un écart signale un prix brut, un cadencier périmé ou une promotion.
+- un prix hors promotion à moins de 30 % du cadencier confirme son unité. Un petit écart signale un prix brut, un cadencier périmé ou une promotion ;
+- au-delà de 30 %, la facture est sans doute dans une autre unité (un carton pour une bouteille) : son prix n'est pas retenu, la ligne reste « à vérifier » et la note de lecture le dit.
 
-Facture d'un format inconnu : voir `references/nouveau-lecteur.md`. Sans facture, garder les unités déduites « à vérifier » et le dire.
+Facture d'un format inconnu, PDF ou non : voir `references/nouveau-lecteur.md`. Une unité supposée par le lecteur (prix à la bouteille ou au colis, au litre ou au fût) reste « à vérifier » tant qu'aucune facture ne la confirme : le dire. Une quantité lue sans ambiguïté dans le libellé (`1L`, `500g`) est sûre.
 
 ## Étape 3 · Apparier les produits
 
@@ -48,25 +48,26 @@ Facture d'un format inconnu : voir `references/nouveau-lecteur.md`. Sans facture
 `famille,produit,unite,type,fournisseur,ref,qte_forcee,note`
 
 - `unite` : `€/kg`, `€/L`, ou une unité libre comme `€/boîte 4/4`.
-- `type` : `identique` (même marque, même format), `equivalent` (substituable en cuisine), `different` (affiché mais jamais compté).
-- `qte_forcee` : obligatoire si l'unité n'est pas le kg ou le litre. Mettre 1 pour comparer à la pièce.
+- `unite` : la même sur toutes les lignes d'un produit.
+- `type` : `identique` (même marque, même format), `equivalent` (substituable en cuisine), `different` (affiché mais jamais compté). Les accents sont acceptés.
+- `qte_forcee` : obligatoire si l'unité n'est pas celle du cadencier. Mettre 1 pour comparer à la pièce. `0,75` et `0.75` sont acceptés. Elle ne confirme pas une unité supposée : seule une facture le fait. Seule exception, `1` quand la quantité manquait au cadencier, puisque rien n'est alors déduit.
 - `note` : ce qui distingue les produits (marque, format, pourcentage).
 
 Commencer par ce que le client achète vraiment, d'après les factures, ou à défaut d'après ses cadenciers personnalisés, plutôt que les tarifs généraux. Dans le doute, choisir `different`. Ne jamais rapprocher un surgelé d'un frais, ni un lyophilisé d'un surgelé.
 
-Ne mettre que les produits présents chez au moins deux fournisseurs, avec une seule référence par fournisseur et par produit. Les autres apparaissent d'eux-mêmes dans l'onglet Sans équivalent du classeur. `type` et `note` se lisent sur la première ligne de chaque produit. Si très peu de produits se recoupent, le dire clairement : c'est un résultat, pas une erreur.
+Ne mettre que les produits présents chez au moins deux fournisseurs, avec une seule référence par fournisseur et par produit. Les autres apparaissent d'eux-mêmes dans l'onglet Sans équivalent du classeur. `type` et `note` se lisent sur la première ligne de chaque produit. Si très peu de produits se recoupent, le dire clairement : c'est un résultat, pas une erreur. Avec aucun produit commun, le classeur est quand même produit, avec l'onglet Sans équivalent.
 
 Continuer sans attendre. Seule une personne du métier sait si deux produits se remplacent : tant qu'elle n'a pas validé les `equivalent` et `different`, annoncer le comparatif comme provisoire. Présenter cette liste à l'étape 6.
 
 ## Étape 4 · Construire le classeur
 
-1. Lancer `scripts/comparer.py <dossier>`. Il refuse une référence absente ou une unité incohérente : corriger `appariements.csv`.
-2. Lancer `scripts/calculer_classeur.py <dossier>/Comparatif-fournisseurs.xlsx`. La réponse `PAS_DE_TABLEUR` n'est pas bloquante.
+1. Lancer `scripts/comparer.py <dossier>`. Il refuse une référence absente, une unité incohérente ou mélangée, deux références d'un même fournisseur pour un produit, un type ou une `qte_forcee` illisibles : corriger `appariements.csv`.
+2. Lancer `scripts/calculer_classeur.py <dossier>/Comparatif-fournisseurs.xlsx`. Il répond `CALCULE`, `PAS_CALCULE` avec la raison, ou `PAS_DE_TABLEUR`. Les deux dernières réponses ne sont pas bloquantes.
 3. Si le classeur a été calculé, vérifier qu'il n'a aucune erreur de formule. Expliquer ou corriger chaque écart supérieur à 50 %.
 
 ## Étape 5 · Publier la page interactive
 
-1. Lancer `scripts/generer_page.py <dossier>`. La page est construite à partir du classeur et ne dépend pas d'Excel.
+1. Lancer `scripts/generer_page.py <dossier>`. La page est construite à partir du classeur et ne dépend pas d'Excel. Elle refuse un classeur plus ancien que ses données : relancer d'abord l'étape 4.
 2. Publier `<dossier>/page-comparatif.html` avec l'outil `Artifact`, sans modifier la page. Noter l'adresse obtenue dans `config.json`, clé `artefact`.
 3. Pour une mise à jour, republier à cette même adresse : faire d'abord `Artifact` avec `action: "read"` et cette `url`, puis publier avec `url` et sans `icon`.
 
@@ -80,7 +81,7 @@ Dire simplement :
 - combien de fichiers ont été lus, et ceux qui ne l'ont pas été ;
 - combien de lignes et de produits ont été comparés, et combien de références n'ont aucun équivalent chez un autre fournisseur ;
 - qui est le moins cher, en rappelant les limites ;
-- combien de résultats sont solides : prix à moins de 3 mois d'écart, offres encore valables et unités confirmées ;
+- combien de résultats sont solides : prix à 3 mois d'écart au plus, au dixième de mois près, aucune offre expirée (une offre vaut jusqu'à son dernier jour inclus) et unités confirmées. Le classeur (colonne Résultat solide) et la page appliquent la même règle ;
 - les écarts entre cadencier et factures ;
 - la liste des correspondances à valider, à passer en revue avec le client.
 
@@ -90,4 +91,4 @@ Ne pas présenter comme une économie certaine une comparaison de prix d'âges d
 
 ## Mettre à jour
 
-Pour un nouveau cadencier, l'ajouter à `sources.csv` sans retirer l'ancien : le plus récent sert au comparatif, et l'onglet Évolutions montre les changements. Relancer les étapes 1, 2, 4 et 5.
+Pour un nouveau cadencier, l'ajouter à `sources.csv` sans retirer l'ancien : le plus récent sert au comparatif, et l'onglet Évolutions montre les changements, au kg ou au litre quand c'est possible. Une référence écrite avec ou sans ses zéros en tête (`0002641`, `2641`) reste la même. Relancer les étapes 1, 2, 4 et 5.

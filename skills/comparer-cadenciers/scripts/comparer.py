@@ -19,10 +19,14 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter as L
 
+from lecteurs import SEUIL_UNITE, cle_ref, nombre, unite_confirmee
+
 ICI = None
 COULEURS = {"Sysco": "1D5FA6", "Pro à Pro": "1E7A3C", "Episaveurs": "B45309",
             "Comptoir du Littoral": "6D28D9", "Sodiboissons": "BE123C"}
 PALETTE = ["0F766E", "A16207", "9D174D", "1E40AF", "4D7C0F", "7E22CE", "C2410C", "155E75"]
+TYPES = {"identique": "identique", "equivalent": "equivalent", "équivalent": "equivalent",
+         "different": "different", "différent": "different"}
 POLICE = "Arial"
 GRIS = "F1F3F5"
 fin = Side(style="thin", color="D5D9DE")
@@ -66,28 +70,47 @@ def main():
     tarifs = lire("tarifs.csv")
     recent = {}
     for t in tarifs:
-        cle = (t["fournisseur"], t["ref"].lstrip("0"))
+        cle = (t["fournisseur"], cle_ref(t["ref"]))
         if cle not in recent or t["date_tarif"] > recent[cle]["date_tarif"]:
             recent[cle] = t
     factures = {}
     if (ICI / "controle_factures.csv").exists():
-        factures = {(x["fournisseur"], x["ref"]): x for x in lire("controle_factures.csv")}
+        factures = {(x["fournisseur"], cle_ref(x["ref"])): x for x in lire("controle_factures.csv")}
 
     produits = OrderedDict()
     erreurs = []
     for a in lire("appariements.csv"):
-        cle = (a["fournisseur"], a["ref"].lstrip("0"))
+        cle = (a["fournisseur"], cle_ref(a["ref"]))
         t = recent.get(cle)
         if not t:
             erreurs.append(f"Référence absente des cadenciers : {cle}")
             continue
-        if not a["qte_forcee"] and "€/" + t["unite"] != a["unite"]:
-            erreurs.append(f"Unité différente pour {a['produit']} {cle} : {t['unite']} au lieu de {a['unite']}")
-        produits.setdefault(a["produit"], dict(famille=a["famille"], unite=a["unite"], type=a["type"],
-                                               note=a["note"], lignes=[]))["lignes"].append((a, t))
+        typ = TYPES.get(a["type"].strip().lower())
+        if not typ:
+            erreurs.append(f"Type inconnu pour {a['produit']} : « {a['type']} ». Écrire identique, equivalent ou different.")
+            continue
+        try:
+            qf = nombre(a["qte_forcee"]) if (a["qte_forcee"] or "").strip() else None
+        except ValueError:
+            erreurs.append(f"qte_forcee illisible pour {a['produit']} {cle} : « {a['qte_forcee']} »")
+            continue
+        p = produits.setdefault(a["produit"], dict(famille=a["famille"], unite=a["unite"], type=typ,
+                                                   note=a["note"], lignes=[]))
+        if a["unite"] != p["unite"]:
+            erreurs.append(f"Unités mélangées dans {a['produit']} : {a['unite']} pour {a['fournisseur']}, "
+                           f"{p['unite']} sur la première ligne")
+        elif not qf and "€/" + t["unite"] != p["unite"]:
+            erreurs.append(f"Unité différente pour {a['produit']} {cle} : €/{t['unite']} au lieu de {p['unite']}. "
+                           "Mettre une qte_forcee ou choisir une autre référence.")
+        if any(x["fournisseur"] == a["fournisseur"] for x, _ in p["lignes"]):
+            erreurs.append(f"Deux références de {a['fournisseur']} pour {a['produit']} : n'en garder qu'une.")
+        p["lignes"].append((dict(a, qte_forcee=qf), t))
     if erreurs:
         print("\n".join(erreurs))
         sys.exit(1)
+    if not produits:
+        print("Aucun produit présent chez deux fournisseurs : rien à mettre en face. "
+              "Le classeur ne garde que les références lues (onglet Sans équivalent).")
 
     fournisseurs = list(OrderedDict.fromkeys(l[0]["fournisseur"] for p in produits.values() for l in p["lignes"]))
     fournisseurs.sort(key=lambda f: list(COULEURS).index(f) if f in COULEURS else len(COULEURS))
@@ -101,14 +124,21 @@ def main():
     tit = ["Produit", "Unité", "Fournisseur", "Réf.", "Libellé du cadencier", "Prix cadencier HT", "Unité de prix",
            "Date du cadencier", "Dernière facture hors promo", "Date de la facture", "Prix retenu HT",
            "Quantité par unité de prix", "Prix par unité de comparaison", "Date du prix retenu", "Origine du prix",
-           "Fiabilité", "Note de lecture", "Fin de validité"]
+           "Fiabilité", "Note de lecture", "Fin de validité", "Offre"]
     entete(wd, 1, tit)
     r = 2
     cellule = {}
     for nom, p in produits.items():
         for a, t in p["lignes"]:
-            f = factures.get((a["fournisseur"], a["ref"].lstrip("0")))
-            qte = float(a["qte_forcee"] or t["qte"])
+            f = factures.get((a["fournisseur"], cle_ref(a["ref"])))
+            # Une facture confirme l'unité si son prix hors promo reste proche du cadencier. Sinon elle
+            # est sans doute dans une autre unité (un carton pour une bouteille) : son prix n'est pas retenu.
+            confirme = bool(f) and unite_confirmee(t["prix"], f["prix_hors_promo"])
+            facture_ecartee = bool(f) and bool(f["prix_hors_promo"]) and not confirme
+            # Comparer à l'unité vendue (qte_forcee = 1) quand seule la quantité manquait ne déduit rien
+            quantite_seule = a["qte_forcee"] == 1 and t["note"].startswith("quantité absente")
+            doute = t["confiance"] in ("à vérifier", "si facture") and not confirme and not quantite_seule
+            qte = a["qte_forcee"] or float(t["qte"])
             wd.cell(r, 1, nom)
             wd.cell(r, 2, p["unite"])
             wd.cell(r, 3, a["fournisseur"])
@@ -117,20 +147,24 @@ def main():
             wd.cell(r, 6, float(t["prix"])).font = Font(color="0000FF")
             wd.cell(r, 7, t["unite_prix"].replace("€/", ""))
             wd.cell(r, 8, jour(t["date_tarif"])).font = Font(color="0000FF")
-            if f and f["prix_hors_promo"]:
+            if confirme:
                 wd.cell(r, 9, float(f["prix_hors_promo"])).font = Font(color="0000FF")
                 wd.cell(r, 10, jour(f["date_hors_promo"])).font = Font(color="0000FF")
             wd.cell(r, 11, f'=IF(AND(I{r}<>"",J{r}>H{r}),I{r},F{r})')
             wd.cell(r, 12, qte).font = Font(color="0000FF")
-            wd.cell(r, 13, f"=K{r}/L{r}")
+            # Arrondi au dix-millième : 9,90 € les 3 kg et 3,30 €/kg sont bien à égalité
+            wd.cell(r, 13, f"=ROUND(K{r}/L{r},4)")
             wd.cell(r, 14, f'=IF(AND(I{r}<>"",J{r}>H{r}),J{r},H{r})')
             wd.cell(r, 15, f'=IF(AND(I{r}<>"",J{r}>H{r}),"facture","cadencier")')
-            # Une facture confirme un prix, pas une quantité : « à vérifier » ne se lève qu'avec une
-            # quantité validée, « si facture » dès qu'une facture existe pour cette référence
-            doute = not a["qte_forcee"] and (t["confiance"] == "à vérifier" or (t["confiance"] == "si facture" and not f))
-            wd.cell(r, 16, "à vérifier" if doute else "vu sur facture" if f else "lu sur le document")
-            wd.cell(r, 17, t["note"] if doute else "")
+            wd.cell(r, 16, "à vérifier" if doute else "vu sur facture" if confirme else "lu sur le document")
+            notes = [t["note"]] if doute and t["note"] else []
+            if facture_ecartee:
+                notes.append(f"facturé {float(f['prix_hors_promo']):.3f} le {jour(f['date_hors_promo']):%d/%m/%Y}, "
+                             "trop loin du cadencier : autre unité ? prix non retenu")
+            wd.cell(r, 17, " ; ".join(notes))
             wd.cell(r, 18, jour(t["fin_validite"]))
+            # Une offre est valable jusqu'à son dernier jour inclus
+            wd.cell(r, 19, f'=IF(AND(R{r}<>"",O{r}="cadencier",R{r}<TODAY()),"expirée","")')
             cellule[(nom, a["fournisseur"])] = r
             r += 1
     dern_d = r - 1
@@ -140,12 +174,15 @@ def main():
             wd.cell(rr, c).number_format = fmt
         for c in (8, 10, 14, 18):
             wd.cell(rr, c).number_format = "dd/mm/yyyy"
-    for i, w in enumerate((36, 11, 19, 9, 44, 10, 8, 11, 11, 11, 10, 10, 12, 11, 10, 16, 40, 11), 1):
+    for i, w in enumerate((36, 11, 19, 9, 44, 10, 8, 11, 11, 11, 10, 10, 12, 11, 10, 16, 40, 11, 9), 1):
         wd.column_dimensions[L(i)].width = w
     wd.freeze_panes = "B2"
-    wd.auto_filter.ref = f"A1:{L(len(tit))}{dern_d}"
-    wd.conditional_formatting.add(f"P2:P{dern_d}", FormulaRule(formula=['$P2="à vérifier"'],
-                                  fill=PatternFill("solid", bgColor="FEF3C7")))
+    if dern_d >= 2:
+        wd.auto_filter.ref = f"A1:{L(len(tit))}{dern_d}"
+        wd.conditional_formatting.add(f"P2:P{dern_d}", FormulaRule(formula=['$P2="à vérifier"'],
+                                      fill=PatternFill("solid", bgColor="FEF3C7")))
+        wd.conditional_formatting.add(f"S2:S{dern_d}", FormulaRule(formula=['$S2="expirée"'],
+                                      fill=PatternFill("solid", bgColor="FEF3C7")))
 
     # ---------- Comparatif ----------
     wc = wb.create_sheet("Comparatif", 0)
@@ -167,7 +204,8 @@ def main():
     rang_titres = 4 + n + 3
     premiere = rang_titres + 1
     titres = ["Produit", "Unité", ""] + fournisseurs + ["Moins cher", "Écart avec le 2e (par unité)", "Écart %",
-                                                       "Mois entre les prix", "Prix à vérifier", "Type", "Remarque"]
+                                                       "Mois entre les prix", "Prix à vérifier", "Offres expirées",
+                                                       "Résultat solide", "Type", "Remarque"]
     # colonnes : A produit, B unité, C famille, D... prix
     entete(wc, rang_titres, titres)
     wc.cell(rang_titres, 3, "Famille")
@@ -175,7 +213,7 @@ def main():
         wc.cell(rang_titres, c0 + i).fill = PatternFill("solid", fgColor=COULEURS[f])
 
     a, b = L(c0), L(c0 + n - 1)
-    cm, ce, cp, cmo, cd, ct, cn = (c0 + n + i for i in range(7))
+    cm, ce, cp, cmo, cd, cx, cs, ct, cn = (c0 + n + i for i in range(9))
     r = premiere
     familles = list(OrderedDict.fromkeys(p["famille"] for p in produits.values()))
     ordre = sorted(produits.items(), key=lambda kv: (familles.index(kv[1]["famille"]), kv[1]["type"] == "different"))
@@ -195,9 +233,13 @@ def main():
                        f'IF(MIN({rng})=SMALL({rng},2),"égalité",INDEX(${a}${rang_titres}:${b}${rang_titres},MATCH(MIN({rng}),{rng},0)))))')
         wc.cell(r, ce, f'=IF(OR({typ}="non comparable",COUNT({rng})<2),"",SMALL({rng},2)-MIN({rng}))').number_format = "0.00"
         wc.cell(r, cp, f'=IF({L(ce)}{r}="","",{L(ce)}{r}/MIN({rng}))').number_format = "0%"
+        # Un dixième de mois près : 106 jours font 3,5 mois, donc plus de 3
         wc.cell(r, cmo, f"=ROUND((_xlfn.MAXIFS('Détail'!$N$2:$N${dern_d},'Détail'!$A$2:$A${dern_d},$A{r})"
-                        f"-_xlfn.MINIFS('Détail'!$N$2:$N${dern_d},'Détail'!$A$2:$A${dern_d},$A{r}))/30.4,0)").number_format = "0"
+                        f"-_xlfn.MINIFS('Détail'!$N$2:$N${dern_d},'Détail'!$A$2:$A${dern_d},$A{r}))/30.4,1)").number_format = "0.0"
         wc.cell(r, cd, f"=COUNTIFS('Détail'!$A$2:$A${dern_d},$A{r},'Détail'!$P$2:$P${dern_d},\"à vérifier\")").number_format = "0"
+        wc.cell(r, cx, f"=COUNTIFS('Détail'!$A$2:$A${dern_d},$A{r},'Détail'!$S$2:$S${dern_d},\"expirée\")").number_format = "0"
+        g = f"{L(cm)}{r}"
+        wc.cell(r, cs, f'=IF(AND({g}<>"non comparable",{g}<>"seul",{L(cmo)}{r}<=3,{L(cd)}{r}=0,{L(cx)}{r}=0),"oui","")')
         wc.cell(r, cn, p["note"])
         r += 1
     dern = r - 1
@@ -217,29 +259,33 @@ def main():
         c.font = Font(name=POLICE, size=10)
 
     # Le prix gagnant ressort, les prix écartés restent sobres
-    for i, f in enumerate(fournisseurs):
-        col = L(c0 + i)
-        wc.conditional_formatting.add(
-            f"{col}{premiere}:{col}{dern}",
-            FormulaRule(formula=[f'AND(ISNUMBER({col}{premiere}),${L(cm)}{premiere}=${col}${rang_titres})'],
-                        fill=PatternFill("solid", bgColor="D1FAE5"), font=Font(bold=True, color="065F46")))
-    wc.conditional_formatting.add(f"{L(cmo)}{premiere}:{L(cmo)}{dern}", FormulaRule(
-        formula=[f"AND(ISNUMBER({L(cmo)}{premiere}),{L(cmo)}{premiere}>3)"], fill=PatternFill("solid", bgColor="FEF3C7")))
-    wc.conditional_formatting.add(f"{L(cp)}{premiere}:{L(cp)}{dern}", FormulaRule(
-        formula=[f"AND(ISNUMBER({L(cp)}{premiere}),{L(cp)}{premiere}>0.5)"], fill=PatternFill("solid", bgColor="FED7AA")))
-    wc.conditional_formatting.add(f"{L(cd)}{premiere}:{L(cd)}{dern}", FormulaRule(
-        formula=[f"{L(cd)}{premiere}>0"], fill=PatternFill("solid", bgColor="FEF3C7")))
-    wc.conditional_formatting.add(f"A{premiere}:{L(cn)}{dern}", FormulaRule(
-        formula=[f'${L(ct)}{premiere}="non comparable"'], font=Font(color="8A94A3")))
+    if dern >= premiere:
+        for i, f in enumerate(fournisseurs):
+            col = L(c0 + i)
+            wc.conditional_formatting.add(
+                f"{col}{premiere}:{col}{dern}",
+                FormulaRule(formula=[f'AND(ISNUMBER({col}{premiere}),${L(cm)}{premiere}=${col}${rang_titres})'],
+                            fill=PatternFill("solid", bgColor="D1FAE5"), font=Font(bold=True, color="065F46")))
+        wc.conditional_formatting.add(f"{L(cmo)}{premiere}:{L(cmo)}{dern}", FormulaRule(
+            formula=[f"AND(ISNUMBER({L(cmo)}{premiere}),{L(cmo)}{premiere}>3)"], fill=PatternFill("solid", bgColor="FEF3C7")))
+        wc.conditional_formatting.add(f"{L(cp)}{premiere}:{L(cp)}{dern}", FormulaRule(
+            formula=[f"AND(ISNUMBER({L(cp)}{premiere}),{L(cp)}{premiere}>0.5)"], fill=PatternFill("solid", bgColor="FED7AA")))
+        for c in (cd, cx):
+            wc.conditional_formatting.add(f"{L(c)}{premiere}:{L(c)}{dern}", FormulaRule(
+                formula=[f"{L(c)}{premiere}>0"], fill=PatternFill("solid", bgColor="FEF3C7")))
+        wc.conditional_formatting.add(f"{L(cs)}{premiere}:{L(cs)}{dern}", FormulaRule(
+            formula=[f'{L(cs)}{premiere}="oui"'], fill=PatternFill("solid", bgColor="D1FAE5")))
+        wc.conditional_formatting.add(f"A{premiere}:{L(cn)}{dern}", FormulaRule(
+            formula=[f'${L(ct)}{premiere}="non comparable"'], font=Font(color="8A94A3")))
+        wc.auto_filter.ref = f"A{rang_titres}:{L(cn)}{dern}"
 
     largeurs = {1: 38, 2: 12, 3: 20}
     for i in range(n):
         largeurs[c0 + i] = 12
-    largeurs.update({cm: 19, ce: 11, cp: 8, cmo: 8, cd: 8, ct: 14, cn: 46})
+    largeurs.update({cm: 19, ce: 11, cp: 8, cmo: 8, cd: 8, cx: 8, cs: 9, ct: 14, cn: 46})
     for c, w in largeurs.items():
         wc.column_dimensions[L(c)].width = w
     wc.freeze_panes = wc.cell(premiere, 2)
-    wc.auto_filter.ref = f"A{rang_titres}:{L(cn)}{dern}"
 
     # ---------- Cadencier contre facture ----------
     wf = wb.create_sheet("Cadencier contre facture")
@@ -266,29 +312,39 @@ def main():
 
     # ---------- Évolutions entre deux cadenciers d'un même fournisseur ----------
     we = wb.create_sheet("Évolutions")
-    titres = ["Fournisseur", "Réf.", "Libellé", "Ancien cadencier", "Ancien prix", "Nouveau cadencier", "Nouveau prix", "Évolution"]
+    titres = ["Fournisseur", "Réf.", "Libellé", "Ancien cadencier", "Ancien prix", "Nouveau cadencier", "Nouveau prix",
+              "Évolution", "Unité"]
     entete(we, 1, titres)
     groupes = {}
     for t in tarifs:
-        groupes.setdefault((t["fournisseur"], t["ref"]), []).append(t)
+        groupes.setdefault((t["fournisseur"], cle_ref(t["ref"])), []).append(t)
     i = 2
     for (four, ref), g in sorted(groupes.items()):
         if len(g) < 2:
             continue
         g.sort(key=lambda x: x["date_tarif"])
-        if g[0]["prix"] == g[-1]["prix"]:
+        avant, apres = g[0], g[-1]
+        # On compare au kg ou au litre quand c'est possible : un pack et une bouteille ne se comparent pas au prix brut
+        if avant["prix_unitaire"] and apres["prix_unitaire"] and avant["unite"] == apres["unite"]:
+            v0, v1, unite = float(avant["prix_unitaire"]), float(apres["prix_unitaire"]), "€/" + apres["unite"]
+        elif avant["unite_prix"] == apres["unite_prix"]:
+            v0, v1, unite = float(avant["prix"]), float(apres["prix"]), apres["unite_prix"]
+        else:
+            continue
+        if round(v0, 4) == round(v1, 4):
             continue
         we.cell(i, 1, four)
-        we.cell(i, 2, ref)
-        we.cell(i, 3, g[-1]["libelle"])
-        we.cell(i, 4, jour(g[0]["date_tarif"])).number_format = "dd/mm/yyyy"
-        we.cell(i, 5, float(g[0]["prix"])).number_format = "0.000"
-        we.cell(i, 6, jour(g[-1]["date_tarif"])).number_format = "dd/mm/yyyy"
-        we.cell(i, 7, float(g[-1]["prix"])).number_format = "0.000"
+        we.cell(i, 2, apres["ref"])
+        we.cell(i, 3, apres["libelle"])
+        we.cell(i, 4, jour(avant["date_tarif"])).number_format = "dd/mm/yyyy"
+        we.cell(i, 5, v0).number_format = "0.000"
+        we.cell(i, 6, jour(apres["date_tarif"])).number_format = "dd/mm/yyyy"
+        we.cell(i, 7, v1).number_format = "0.000"
         we.cell(i, 8, f"=(G{i}-E{i})/E{i}").number_format = "+0.0%;-0.0%;0.0%"
+        we.cell(i, 9, unite)
         i += 1
     habiller(we, 2, i - 1, len(titres))
-    for k, w in enumerate((21, 9, 44, 12, 10, 12, 10, 10), 1):
+    for k, w in enumerate((21, 9, 44, 12, 10, 12, 10, 10, 9), 1):
         we.column_dimensions[L(k)].width = w
     we.freeze_panes = "A2"
 
@@ -296,7 +352,7 @@ def main():
     ws = wb.create_sheet("Sans équivalent")
     titres = ["Fournisseur", "Réf.", "Libellé", "Prix HT", "Unité de prix", "Prix par kg ou litre", "Unité", "Date du tarif"]
     entete(ws, 1, titres)
-    pris = {(l[0]["fournisseur"], l[0]["ref"].lstrip("0")) for p in produits.values() for l in p["lignes"]}
+    pris = {(l[0]["fournisseur"], cle_ref(l[0]["ref"])) for p in produits.values() for l in p["lignes"]}
     seuls = sorted((t for k, t in recent.items() if k not in pris), key=lambda t: (t["fournisseur"], t["libelle"]))
     for i, t in enumerate(seuls, 2):
         ws.cell(i, 1, t["fournisseur"])
@@ -327,9 +383,10 @@ def main():
         ("Cadencier contre facture", "Prix du cadencier face au dernier prix payé, pour chaque référence retrouvée sur une facture."),
         ("Évolutions", "Prix qui ont changé entre deux cadenciers d'un même fournisseur."),
         ("Sans équivalent", "Références lues mais comparées à rien, faute de produit équivalent chez un autre fournisseur."),
-        ("Fond jaune", "« Mois entre les prix » supérieur à 3 : les prix comparés n'ont pas le même âge, le résultat est indicatif. « Prix à vérifier » : unité non confirmée par une facture."),
+        ("Fond jaune", "« Mois entre les prix » supérieur à 3 : les prix comparés n'ont pas le même âge, le résultat est indicatif. « Prix à vérifier » : unité non confirmée par une facture. « Offres expirées » : prix lu sur une offre dont la fin de validité est passée."),
         ("Fond orange", "Écart supérieur à 50 % : souvent une erreur d'unité ou deux produits différents. À contrôler avant de s'y fier."),
-        ("Prix retenu", "Le prix du cadencier, ou celui de la dernière facture hors promotion si elle est plus récente."),
+        ("Résultat solide", "Prix à 3 mois d'écart au plus, aucune offre expirée, aucune unité à vérifier. Mêmes règles que la page interactive."),
+        ("Prix retenu", f"Le prix du cadencier, ou celui de la dernière facture hors promotion si elle est plus récente et à moins de {SEUIL_UNITE:.0%} du cadencier. Plus loin, la facture est sans doute dans une autre unité : son prix n'est pas retenu et la note de lecture le signale."),
         ("Non comparable", "Produit affiché pour mémoire, jamais compté dans le bilan."),
         ("Limites", "Les correspondances entre produits ont été proposées par Claude et restent à valider. Quand un document ne porte pas de date, c'est celle du fichier qui est utilisée. Ce sont des prix HT, hors franco, remises de fin d'année et frais de livraison."),
     ]

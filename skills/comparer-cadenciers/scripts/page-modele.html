@@ -192,6 +192,7 @@ const ETATS = [
   {id: 'solide', cls: 'ok', txt: 'résultats solides : prix récents, offres en cours, unités confirmées', test: p => p.solide},
   {id: 'dates', cls: 'warn', txt: 'avec plus de 3 mois entre les prix', test: p => p.mois > 3},
   {id: 'unite', cls: 'warn', txt: 'avec une unité à confirmer', test: p => p.doutes > 0},
+  {id: 'expire', cls: 'warn', txt: 'avec une offre expirée', test: p => p.offres.some(o => o.expire)},
   {id: 'ecart', cls: 'bad', txt: 'avec un écart de plus de 50 %, à contrôler', test: p => p.pct > .5},
 ];
 
@@ -220,7 +221,7 @@ function tags(p) {
   if (p.gagnant === 'non comparable') return '<span class="tag neutre">Non comparable</span>';
   t.push(`<span class="tag neutre">${esc(p.type)}</span>`);
   if (p.solide) t.push('<span class="tag ok">Solide</span>');
-  if (p.mois > 3) t.push(`<span class="tag warn">${p.mois} mois entre les prix</span>`);
+  if (p.mois > 3) t.push(`<span class="tag warn">${String(p.mois).replace('.', ',')} mois entre les prix</span>`);
   if (p.doutes > 0) t.push('<span class="tag warn">Unité à confirmer</span>');
   if (p.pct > .5) t.push('<span class="tag bad">Écart à contrôler</span>');
   if (p.offres.some(o => o.expire)) t.push('<span class="tag warn">Offre expirée</span>');

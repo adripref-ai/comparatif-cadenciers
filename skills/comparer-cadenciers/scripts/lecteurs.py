@@ -57,6 +57,31 @@ def date_fr(txt):
     return datetime.strptime(txt, "%d/%m/%Y").date().isoformat()
 
 
+def date_iso(txt):
+    """Accepte 2025-12-08 comme 08/12/2025 et renvoie AAAA-MM-JJ."""
+    txt = str(txt).strip()
+    for forme in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(txt, forme).date().isoformat()
+        except ValueError:
+            pass
+    raise ValueError(f"date illisible : « {txt} ». Écrire 08/12/2025 ou 2025-12-08.")
+
+
+def cle_ref(ref):
+    """0002641 et 2641 désignent le même article : on compare les références sans leurs zéros en tête."""
+    return str(ref).strip().lstrip("0") or "0"
+
+
+# Une facture confirme l'unité du cadencier si son prix hors promotion en reste proche.
+# Au-delà, c'est sans doute une autre unité (un carton au lieu d'une bouteille) : rien n'est confirmé.
+SEUIL_UNITE = 0.30
+
+
+def unite_confirmee(prix_cadencier, prix_facture):
+    return prix_facture not in (None, "") and abs(float(prix_facture) - float(prix_cadencier)) <= SEUIL_UNITE * float(prix_cadencier)
+
+
 NB = r"(\d+(?:[.,]\d+)?)"
 FACTEUR = {"kg": (1, "kg"), "k": (1, "kg"), "g": (0.001, "kg"), "gr": (0.001, "kg"),
            "l": (1, "L"), "lit": (1, "L"), "litre": (1, "L"), "litres": (1, "L"),
@@ -105,10 +130,18 @@ def lire_sysco(p):
     debut, fin = re.search(r"valable du (\S+) au (\S+)", texte).groups()
     out, annonces = [], 0
     for page in doc:
+        precedente, x_lib = None, None
         for mots in lignes_pdf(page):
             t = " ".join(m[4] for m in mots)
             if re.match(r"^[A-Z] \d{5} ", t):
                 annonces += 1
+            elif precedente is not None and abs(mots[0][0] - x_lib) < 4:
+                # Suite de la désignation, en retrait sous le libellé : « 8 % d'acidité », « 44 % de cacao »
+                lib = precedente["libelle"]
+                fin_lib = " (surgelé)" if lib.endswith(" (surgelé)") else ""
+                precedente["libelle"] = lib[:len(lib) - len(fin_lib)] + " " + t + fin_lib
+                continue
+            precedente = None
             m = SYSCO.match(t)
             if not m:
                 continue
@@ -119,22 +152,23 @@ def lire_sysco(p):
             if uf in ("KG", "L"):
                 out.append(ligne("Sysco", p.name, date_fr(debut), "document", date_fr(fin), ref, lib, cond,
                                  prix, "€/" + uf.replace("KG", "kg"), 1, uf.replace("KG", "kg")))
-                continue
-            # Vendu à la pièce : le poids est dans le conditionnement ou le calibre
-            q, u, sur = quantite(cond if MESURE.search(cond) else lib)
-            if q:
-                out.append(ligne("Sysco", p.name, date_fr(debut), "document", date_fr(fin), ref, lib, cond,
-                                 prix, "€/" + uf, q, u, "sûr" if sur else "à vérifier"))
             else:
-                out.append(ligne("Sysco", p.name, date_fr(debut), "document", date_fr(fin), ref, lib, cond,
-                                 prix, "€/" + uf, 1, uf.lower(), "à vérifier", "quantité absente du conditionnement"))
+                # Vendu à la pièce : le poids est dans le conditionnement ou le calibre
+                q, u, sur = quantite(cond if MESURE.search(cond) else lib)
+                if q:
+                    out.append(ligne("Sysco", p.name, date_fr(debut), "document", date_fr(fin), ref, lib, cond,
+                                     prix, "€/" + uf, q, u, "sûr" if sur else "à vérifier"))
+                else:
+                    out.append(ligne("Sysco", p.name, date_fr(debut), "document", date_fr(fin), ref, lib, cond,
+                                     prix, "€/" + uf, 1, uf.lower(), "à vérifier", "quantité absente du conditionnement"))
+            precedente, x_lib = out[-1], mots[2][0]
     return out, annonces
 
 
 # ---------- Pro à Pro : offre PDF ----------
 
 UV_PAP = r"(SCH|KG|BTE|BTL|PLQ|LOT|PQT|PLT|5/1|4/4|PCE|BRIC|BQT|BID|POT|SAC|CAR|FLA|SEAU|PC|BAC|STK|TUB|ROL|UN|BOC|CT|DOS|BOI)"
-PAP = re.compile(r"^(\d{4,6}) " + UV_PAP + r" (.+?) 1\.000 (\d+\.\d{4}) (\d+\.\d{2})$")
+PAP = re.compile(r"^(\d{4,6}) " + UV_PAP + r" (.+?) \d+\.\d{3} (\d+\.\d{4}) (\d+\.\d{2})$")
 
 
 def lire_proapro(p):
@@ -142,12 +176,17 @@ def lire_proapro(p):
     texte = " ".join(page.get_text() for page in doc)
     dates = sorted(re.findall(r"\d{2}/\d{2}/\d{4}", texte)[:2], key=date_fr)
     debut, fin = dates[0], dates[1]
-    out, annonces = [], 0
+    out, annonces, total = [], 0, None
     for page in doc:
         # Colonne Marque séparée par sa position, pour ne pas la coller au libellé
         for mots in lignes_pdf(page, tol=4):
             t = " ".join(m[4] for m in mots)
-            if not re.match(r"^\d{4,6} \S+ ", t) or "1.000" not in t:
+            # L'offre annonce elle-même son nombre de lignes : c'est le meilleur garde-fou
+            nb = re.search(r"Nb Lignes\s*:\s*(\d+)\b", t)
+            if nb:
+                total = int(nb.group(1))
+            # Compté sans regarder la quantité commandée, pour qu'une ligne mal lue se voie
+            if not re.match(r"^\d{4,6} \S+ ", t) or not re.search(r"\d\.\d{2}$", t):
                 continue
             annonces += 1
             m = PAP.match(t)
@@ -169,7 +208,7 @@ def lire_proapro(p):
             else:
                 out.append(ligne("Pro à Pro", p.name, date_fr(debut), "document", date_fr(fin), ref, lib, uv,
                                  prix, "€/" + uv, 1, uv.lower(), "à vérifier", "quantité absente du libellé", **kw))
-    return out, annonces
+    return out, max(annonces, total or 0)
 
 
 # ---------- Comptoir du Littoral : cadencier PDF ----------
@@ -218,11 +257,15 @@ def lire_sodiboissons(p):
     doc = fitz.open(p)
     out, annonces = [], 0
     d = date_fichier(p)
+    x0 = None
     for page in doc:
         lignes = lignes_pdf(page)
-        # Les deux premières colonnes portent le client : on lit à partir de la colonne ARTICLE
-        x0 = next(w[0] for l in lignes for w in l if w[4] == "ARTICLE") - 2
+        # Les deux premières colonnes portent le client : on lit à partir de la colonne ARTICLE.
+        # Une page sans en-tête (suite, ou page blanche) garde la colonne de la page d'avant.
+        x0 = next((w[0] - 2 for l in lignes for w in l if w[4] == "ARTICLE"), x0)
         for mots in lignes:
+            if x0 is None:
+                break
             if not mots[0][4].isdigit():
                 continue
             annonces += 1
@@ -258,8 +301,10 @@ def lire_episaveurs(p):
     out, annonces, entetes, d = [], 0, None, None
     for r in ws.iter_rows(values_only=True):
         v = [c for c in r if c is not None]
-        if v and isinstance(v[0], str) and "Offre de prix à compter du" in v[0]:
-            d = date_fr(re.search(r"\d{2}/\d{2}/\d{4}", v[0]).group())
+        date_offre = next((re.search(r"\d{2}/\d{2}/\d{4}", c) for c in v if isinstance(c, str)
+                           and re.search(r"offre|valable|compter|partir", c, re.I) and re.search(r"\d{2}/\d{2}/\d{4}", c)), None)
+        if date_offre and not d:
+            d = date_fr(date_offre.group())
         if "Réf article" in v:
             entetes = {c: i for i, c in enumerate(r) if c is not None}
             continue
@@ -277,18 +322,21 @@ def lire_episaveurs(p):
         cond = f"{uv}, {nb} par colis"
         if ut in ("KG", "L", "LT"):
             u = "kg" if ut == "KG" else "L"
-            out.append(ligne("Episaveurs", p.name, d, "document", "", ref, lib, cond, prix, "€/" + u, 1, u))
+            out.append(ligne("Episaveurs", p.name, d, "document","", ref, lib, cond, prix, "€/" + u, 1, u))
             continue
         # Prix à l'unité (bidon, sac...) : le x4 de « 5Lx4 » ne compte pas. Prix au colis : il compte.
         q, u, sur = quantite(lib, sans_multiple=ut != "COL")
         if lib.startswith("Sac poub"):  # 50L = contenance du sac, pas une quantité vendue
             q = None
         if q:
-            out.append(ligne("Episaveurs", p.name, d, "document", "", ref, lib, cond, prix, "€/" + ut, q, u,
+            out.append(ligne("Episaveurs", p.name, d, "document","", ref, lib, cond, prix, "€/" + ut, q, u,
                              "sûr" if sur else "à vérifier"))
         else:
-            out.append(ligne("Episaveurs", p.name, d, "document", "", ref, lib, cond, prix, "€/" + ut, 1, ut.lower(),
+            out.append(ligne("Episaveurs", p.name, d, "document","", ref, lib, cond, prix, "€/" + ut, 1, ut.lower(),
                              "à vérifier", "quantité absente du libellé"))
+    for x in out:  # Offre sans date reconnue : date du fichier, à confirmer
+        if not x["date_tarif"]:
+            x["date_tarif"], x["source_date"] = (d, "document") if d else (date_fichier(p), "date du fichier")
     return out, annonces
 
 
@@ -301,7 +349,7 @@ def lire_saisie(p):
     for x in csv.DictReader(open(p, encoding="utf-8-sig")):
         annonces += 1
         q = nombre(x["qte"]) if x.get("qte") else None
-        out.append(ligne(x["fournisseur"], p.name, x.get("date") or date_fichier(p), "saisie", "", x["ref"], x["libelle"],
+        out.append(ligne(x["fournisseur"], p.name, date_iso(x["date"]) if x.get("date") else date_fichier(p), "saisie", "", x["ref"], x["libelle"],
                          x.get("conditionnement", ""), nombre(x["prix"]), x["unite_prix"], q, x.get("unite"),
                          "à vérifier", "relevé à la main sur le document"))
     return out, annonces

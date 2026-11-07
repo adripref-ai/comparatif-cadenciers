@@ -34,7 +34,7 @@ Chaque client a son propre dossier : aucune donnée de client n'est gardée dans
 ## Ce qu'il faut
 
 - Python 3 avec PyMuPDF et openpyxl.
-- Microsoft Excel ou LibreOffice pour calculer le classeur à l'avance. Sans eux, il se calcule à la première ouverture et la page interactive fonctionne quand même.
+- Microsoft Excel ou LibreOffice pour calculer le classeur à l'avance. Sur Mac, le calcul se fait sur une copie rangée dans le dossier d'Excel, sans fenêtre d'autorisation. Sans tableur, le classeur se calcule à la première ouverture et la page interactive fonctionne quand même.
 
 ## Limites
 

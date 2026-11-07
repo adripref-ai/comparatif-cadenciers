@@ -29,6 +29,11 @@ def jour(v):
     return v or ""
 
 
+def arrondi(x, n):
+    """Arrondi comme ROUND dans Excel (moitié vers le haut), pour que page et classeur concordent."""
+    return math.floor(x * 10 ** n + 0.5) / 10 ** n
+
+
 def table(ws, ligne_titres):
     """Renvoie les lignes d'une feuille sous forme de dictionnaires, clés = titres de colonnes."""
     titres = [c.value for c in ws[ligne_titres]]
@@ -44,6 +49,12 @@ def main():
     classeur = dossier / (sys.argv[2] if len(sys.argv) > 2 else "Comparatif-fournisseurs.xlsx")
     config = json.load(open(dossier / "config.json", encoding="utf-8"))
     client = config["client"]
+    # Une page refaite à partir d'un classeur périmé afficherait d'anciens chiffres
+    entrees = [dossier / n for n in ("tarifs.csv", "appariements.csv", "controle_factures.csv", "config.json")]
+    plus_recente = max((p for p in entrees if p.exists()), key=lambda p: p.stat().st_mtime, default=None)
+    if not classeur.exists() or (plus_recente and plus_recente.stat().st_mtime > classeur.stat().st_mtime):
+        sys.exit(f"Classeur absent ou plus ancien que {plus_recente.name if plus_recente else 'ses données'} : "
+                 "relancer comparer.py d'abord.")
     wb = openpyxl.load_workbook(classeur)
 
     wc = wb["Comparatif"]
@@ -59,10 +70,12 @@ def main():
         retenu = fac if par_facture else cad
         offres.setdefault(d["Produit"], []).append(dict(
             f=d["Fournisseur"], ref=d["Réf."], lib=d["Libellé du cadencier"], cad=cad, uc=d["Unité de prix"],
-            dcad=jour(dcad), fac=fac, dfac=jour(dfac), pu=retenu / d["Quantité par unité de prix"],
+            dcad=jour(dcad), fac=fac, dfac=jour(dfac), pu=arrondi(retenu / d["Quantité par unité de prix"], 4),
             origine="facture" if par_facture else "cadencier", fiable=d["Fiabilité"],
             quand=dfac if par_facture else dcad,
-            expire=not par_facture and isinstance(d.get("Fin de validité"), datetime) and d["Fin de validité"] < datetime.now()))
+            # Une offre reste valable jusqu'à son dernier jour inclus, comme dans le classeur
+            expire=not par_facture and isinstance(d.get("Fin de validité"), datetime)
+            and d["Fin de validité"].date() < date.today()))
 
     produits = []
     for p in table(wc, rang):
@@ -78,7 +91,7 @@ def main():
             gagnant = "égalité" if prix[0] == prix[1] else next(
                 f for f in fournisseurs for o in liste if o["f"] == f and o["pu"] == prix[0])
         dates = [o.pop("quand") for o in liste]
-        mois = math.floor((max(dates) - min(dates)).days / 30.4 + .5)
+        mois = arrondi((max(dates) - min(dates)).days / 30.4, 1)
         doutes = sum(o["fiable"] == "à vérifier" for o in liste)
         produits.append(dict(
             nom=p["Produit"], unite=p["Unité"], famille=p["Famille"], gagnant=gagnant, ecart=ecart, pct=pct,

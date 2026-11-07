@@ -47,11 +47,11 @@ def lire_mon_fournisseur(p):
 LECTEURS = {"mon-fournisseur": lire_mon_fournisseur}
 ```
 
-Marquer « à vérifier » toute unité déduite. Si `q` est vide, la ligne reste dans `tarifs.csv` sans prix unitaire et devra recevoir une `qte_forcee`.
+Marquer « à vérifier » toute unité supposée : prix peut-être à la bouteille ou au colis, au litre ou au fût, ou quantité devinée parmi plusieurs mesures. Une quantité lue sans ambiguïté dans le libellé peut rester « sûr » : c'est la troisième valeur que renvoie `quantite()`. Si `q` est vide, la ligne reste dans `tarifs.csv` sans prix unitaire et devra recevoir une `qte_forcee`.
 
 ## 3. Facture d'un format inconnu
 
-Ajouter à `lecteurs_client.py` une fonction qui prend un chemin et renvoie `None` si la facture n'est pas de ce fournisseur, sinon `(fournisseur, "AAAA-MM-JJ", [(ref, libellé, prix, promo), ...])`. Ignorer les avoirs.
+Ajouter à `lecteurs_client.py` une fonction qui prend un chemin et renvoie `None` si la facture n'est pas de ce fournisseur, sinon `(fournisseur, "AAAA-MM-JJ", [(ref, libellé, prix, promo), ...])`. Ignorer les avoirs. Elle reçoit tous les fichiers du dossier des factures, PDF ou non (CSV, Excel, image) : renvoyer `None` pour ceux qu'elle ne sait pas lire.
 
 ```python
 FACTURES = [lire_facture_mon_fournisseur]
