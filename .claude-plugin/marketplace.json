@@ -1,0 +1,11 @@
+{
+  "name": "outils-restaurant",
+  "owner": {"name": "Outils Restaurant"},
+  "plugins": [
+    {
+      "name": "comparatif-cadenciers",
+      "source": "./",
+      "description": "Compare les prix des fournisseurs à partir de leurs cadenciers, avec un classeur Excel et une page interactive."
+    }
+  ]
+}

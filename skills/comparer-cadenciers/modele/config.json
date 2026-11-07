@@ -1,0 +1,5 @@
+{
+  "client": "Nom du restaurant",
+  "factures": "factures",
+  "provisoire": true
+}

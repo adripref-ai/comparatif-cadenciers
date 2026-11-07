@@ -1,0 +1,329 @@
+<title>__TITRE__</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Une ardoise de prix : chaque produit est une petite échelle de barres, une couleur par fournisseur. */
+:root{
+  --ground:#F3F5F4; --panel:#FFFFFF; --ink:#1B2521; --muted:#566360; --line:#D3DAD6; --soft:#E8EDEA;
+  --ok:#1E7A3C; --ok-soft:#E1F3E7; --warn:#7A5200; --warn-soft:#FBF0CF; --bad:#B3261E; --bad-soft:#FBE3E0; --on:#FFFFFF;
+  --titre:"Bricolage Grotesque","Source Sans 3",system-ui,sans-serif;
+  --texte:"Source Sans 3",system-ui,sans-serif;
+  --chiffre:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  __COULEURS_CLAIR__
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#121816; --panel:#1A221F; --ink:#E3EAE6; --muted:#A1AEA8; --line:#2F3B36; --soft:#232D29;
+    --ok:#6FD18E; --ok-soft:#14301E; --warn:#F2C65E; --warn-soft:#3A2E10; --bad:#F08A7A; --bad-soft:#3E1D19; --on:#0D1311;
+    __COULEURS_SOMBRE__
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#121816; --panel:#1A221F; --ink:#E3EAE6; --muted:#A1AEA8; --line:#2F3B36; --soft:#232D29;
+  --ok:#6FD18E; --ok-soft:#14301E; --warn:#F2C65E; --warn-soft:#3A2E10; --bad:#F08A7A; --bad-soft:#3E1D19; --on:#0D1311;
+  __COULEURS_SOMBRE__
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--ground);color:var(--ink);font:16px/1.45 var(--texte);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+main{max-width:1040px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:22px}
+.vue{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+h1,h2{font-family:var(--titre);margin:0;line-height:1.15;text-wrap:balance}
+h1{font-size:clamp(27px,5vw,40px)}
+h2{font-size:18px}
+p{margin:0}
+.eyebrow{font:600 12px var(--texte);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.meta{color:var(--muted);margin-top:6px;max-width:68ch}
+.num{font-family:var(--chiffre);font-variant-numeric:tabular-nums}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+/* Bilan */
+.bilan{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px}
+.bloc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:12px;align-content:start;min-width:0}
+.barre{display:flex;height:34px;border-radius:6px;overflow:hidden;background:var(--soft)}
+.barre button{border:0;padding:0;cursor:pointer;background:var(--c);color:var(--on);font:700 14px var(--chiffre);min-width:0;overflow:hidden}
+.legende{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px}
+.fo{display:flex;align-items:center;gap:9px;border:1px solid var(--line);background:none;border-radius:8px;padding:7px 10px;cursor:pointer;text-align:left;min-width:0}
+.fo i{width:14px;height:14px;border-radius:4px;background:var(--c);flex:none}
+.fo span{flex:1;font-weight:600;min-width:0}
+.fo b{font:700 16px var(--chiffre)}
+.fo[aria-pressed="true"]{border-color:var(--c);background:color-mix(in srgb,var(--c) 16%,var(--panel))}
+.etats{display:grid;gap:6px}
+.etat{display:grid;grid-template-columns:44px 1fr;align-items:center;gap:8px;border:1px solid var(--line);background:none;border-radius:8px;padding:6px 10px;text-align:left;cursor:pointer}
+.etat b{font:700 18px var(--chiffre);color:var(--k)}
+.etat[aria-pressed="true"]{border-color:var(--k);background:var(--ks)}
+
+/* Onglets et filtres */
+.onglets{display:flex;flex-wrap:wrap;gap:4px;border-bottom:2px solid var(--line)}
+.onglets button{border:0;background:none;padding:9px 14px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px}
+.onglets button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.outils{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.outils input[type=search]{flex:1 1 220px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 11px}
+.outils select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 9px;max-width:100%}
+.outils label.case{display:flex;gap:6px;align-items:center}
+.lien{border:0;background:none;text-decoration:underline;cursor:pointer;color:var(--muted);padding:6px}
+.compte{color:var(--muted);font-size:14px}
+
+/* Produits */
+.liste{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.groupe{margin-top:12px}
+details.p{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--w,var(--line));border-radius:8px;min-width:0}
+details.p summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.6fr) minmax(0,1fr);gap:16px;padding:12px 14px;align-items:center}
+details.p summary::-webkit-details-marker{display:none}
+.nom b{display:block;font-weight:700;line-height:1.25}
+.nom small{color:var(--muted);font-size:13.5px;display:block}
+.echelle{display:grid;gap:5px;min-width:0}
+.prix{display:grid;grid-template-columns:minmax(58px,92px) minmax(0,1fr) 62px;gap:8px;align-items:center;font-size:13.5px}
+.prix .qui{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.piste{height:14px;background:var(--soft);border-radius:3px;overflow:hidden}
+.piste i{display:block;height:100%;background:color-mix(in srgb,var(--c) 42%,var(--soft))}
+.prix .val{font:500 14px var(--chiffre);text-align:right;color:var(--muted)}
+.prix.gagne .qui{color:var(--c);font-weight:700}
+.prix.gagne .piste i{background:var(--c)}
+.prix.gagne .val{color:var(--c);font-weight:700}
+.verdict{display:grid;gap:5px;justify-items:start;min-width:0}
+.pastille{display:inline-block;background:var(--c);color:var(--on);font-weight:700;font-size:13.5px;border-radius:999px;padding:2px 11px;max-width:100%}
+.gain{font-size:14px}
+.gain b{font-family:var(--chiffre)}
+.tags{display:flex;flex-wrap:wrap;gap:4px}
+.tag{font-size:12.5px;font-weight:600;border-radius:5px;padding:1px 7px;background:var(--ks);color:var(--k)}
+.ok{--k:var(--ok);--ks:var(--ok-soft)} .warn{--k:var(--warn);--ks:var(--warn-soft)} .bad{--k:var(--bad);--ks:var(--bad-soft)} .neutre{--k:var(--muted);--ks:var(--soft)}
+details.p.hors .piste i,details.p.hors .prix.gagne .piste i{background:var(--line)}
+details.p.hors .prix .qui,details.p.hors .prix .val{color:var(--muted);font-weight:500}
+.detail{border-top:1px solid var(--soft);padding:10px 14px 14px;display:grid;gap:8px}
+.defile{overflow-x:auto;min-width:0}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--soft);vertical-align:top}
+th{font:600 12px var(--texte);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
+.tableau{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.tableau table{min-width:760px}
+.point{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--c);margin-right:6px}
+.vide{padding:26px;text-align:center;color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:10px}
+.provisoire{background:var(--bad-soft);color:var(--bad);font-weight:700;border-radius:8px;padding:9px 13px}
+.limites{color:var(--muted);font-size:14px;max-width:80ch}
+
+@media (max-width:760px){
+  .bilan{grid-template-columns:minmax(0,1fr)}
+  details.p summary{grid-template-columns:minmax(0,1fr);gap:9px}
+}
+@media (prefers-reduced-motion:no-preference){.piste i{transition:width .2s}}
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">Comparatif fournisseurs</div>
+    <h1 id="titre"></h1>
+    <p class="meta" id="meta"></p>
+  </header>
+
+  <p class="provisoire" id="prov" hidden>Résultat provisoire : les correspondances entre produits restent à valider.</p>
+
+  <section class="bilan" aria-label="Bilan">
+    <div class="bloc">
+      <h2>Qui est le moins cher ?</h2>
+      <div class="barre" id="barre"></div>
+      <div class="legende" id="legende"></div>
+    </div>
+    <div class="bloc">
+      <h2>Quelle confiance accorder ?</h2>
+      <div class="etats" id="etats"></div>
+    </div>
+  </section>
+
+  <div class="onglets" role="tablist" aria-label="Vues">
+    <button role="tab" id="o-produits" aria-selected="true" data-v="produits">Produits</button>
+    <button role="tab" id="o-factures" aria-selected="false" data-v="factures">Cadencier contre facture</button>
+    <button role="tab" id="o-evolutions" aria-selected="false" data-v="evolutions">Évolutions</button>
+  </div>
+
+  <section class="vue" id="v-produits">
+    <div class="outils">
+      <input type="search" id="q" placeholder="Chercher un produit" aria-label="Chercher un produit">
+      <select id="fam" aria-label="Famille"></select>
+      <select id="tri" aria-label="Trier">
+        <option value="fam">Trier par famille</option>
+        <option value="ecart">Plus gros écart d'abord</option>
+        <option value="nom">Ordre alphabétique</option>
+      </select>
+      <button class="lien" id="raz" hidden>Tout afficher</button>
+      <span class="compte" id="compte"></span>
+    </div>
+    <div class="liste" id="liste"></div>
+  </section>
+
+  <section class="vue" id="v-factures" hidden>
+    <p class="meta">Le prix du cadencier face au dernier prix payé. Un écart peut venir d'un prix brut, d'un cadencier périmé ou d'une promotion.</p>
+    <div class="outils">
+      <select id="ffo" aria-label="Fournisseur"></select>
+      <label class="case"><input type="checkbox" id="fdiff" checked> Seulement les prix différents</label>
+      <span class="compte" id="fcompte"></span>
+    </div>
+    <div class="tableau defile"><table><thead><tr><th>Fournisseur</th><th>Produit</th><th class="r">Cadencier</th><th>Du</th><th class="r">Facture</th><th>Du</th><th class="r">Écart</th><th>Achats</th></tr></thead><tbody id="ftab"></tbody></table></div>
+  </section>
+
+  <section class="vue" id="v-evolutions" hidden>
+    <p class="meta">Les prix qui ont changé entre deux cadenciers d'un même fournisseur.</p>
+    <div id="evo"></div>
+  </section>
+
+  <p class="limites">Prix HT, hors franco, remises de fin d'année et frais de livraison. Quand une facture est plus récente que le cadencier, son prix hors promotion est retenu. Les correspondances entre produits doivent être validées par une personne du métier. Mêmes chiffres que le classeur Excel, qui liste aussi les références sans équivalent.</p>
+</main>
+
+<script type="application/json" id="donnees">__DONNEES__</script>
+<script>
+const D = JSON.parse(document.getElementById('donnees').textContent);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const eur = (n, d = 2) => n == null ? '' : n.toLocaleString('fr-FR', {minimumFractionDigits: d, maximumFractionDigits: d});
+const jour = s => s ? s.split('-').reverse().join('/') : '';
+const pct = n => Math.round(n * 100) + ' %';
+const couleur = f => `--c:var(--f${D.fournisseurs.indexOf(f)})`;
+const filtre = {gagnant: null, etat: null};
+
+const comparables = D.produits.filter(p => p.gagnant !== 'non comparable' && p.gagnant !== 'seul');
+const ETATS = [
+  {id: 'solide', cls: 'ok', txt: 'résultats solides : prix récents et unités confirmées', test: p => p.solide},
+  {id: 'dates', cls: 'warn', txt: 'avec plus de 3 mois entre les prix', test: p => p.mois > 3},
+  {id: 'unite', cls: 'warn', txt: 'avec une unité à confirmer', test: p => p.doutes > 0},
+  {id: 'ecart', cls: 'bad', txt: 'avec un écart de plus de 50 %, à contrôler', test: p => p.pct > .5},
+];
+
+$('titre').textContent = D.client;
+$('prov').hidden = !D.provisoire;
+$('meta').textContent = `${D.produits.length} produits, ${D.fournisseurs.length} fournisseurs. Prix HT ramenés au kg, au litre ou à l'unité indiquée. Touche un produit pour voir d'où viennent ses prix.`;
+
+function dessinerBilan() {
+  const total = D.fournisseurs.reduce((s, f) => s + comparables.filter(p => p.gagnant === f).length, 0) || 1;
+  $('barre').innerHTML = D.fournisseurs.map(f => {
+    const n = comparables.filter(p => p.gagnant === f).length;
+    return n ? `<button style="${couleur(f)};width:${n / total * 100}%" data-f="${esc(f)}" aria-label="${esc(f)} : ${n} produits">${n}</button>` : '';
+  }).join('');
+  $('legende').innerHTML = D.fournisseurs.map(f => {
+    const n = comparables.filter(p => p.gagnant === f).length;
+    return `<button class="fo" style="${couleur(f)}" data-f="${esc(f)}" aria-pressed="${filtre.gagnant === f}"><i></i><span>${esc(f)}</span><b>${n}</b></button>`;
+  }).join('');
+  $('etats').innerHTML = ETATS.map(e => {
+    const n = comparables.filter(e.test).length;
+    return `<button class="etat ${e.cls}" data-e="${e.id}" aria-pressed="${filtre.etat === e.id}"><b>${n}</b><span>${e.txt}</span></button>`;
+  }).join('');
+}
+
+function tags(p) {
+  const t = [];
+  if (p.gagnant === 'non comparable') return '<span class="tag neutre">Non comparable</span>';
+  t.push(`<span class="tag neutre">${esc(p.type)}</span>`);
+  if (p.solide) t.push('<span class="tag ok">Solide</span>');
+  if (p.mois > 3) t.push(`<span class="tag warn">${p.mois} mois entre les prix</span>`);
+  if (p.doutes > 0) t.push('<span class="tag warn">Unité à confirmer</span>');
+  if (p.pct > .5) t.push('<span class="tag bad">Écart à contrôler</span>');
+  if (p.offres.some(o => o.expire)) t.push('<span class="tag warn">Offre expirée</span>');
+  return t.join('');
+}
+
+function carte(p) {
+  const max = Math.max(...p.offres.map(o => o.pu));
+  const hors = p.gagnant === 'non comparable';
+  const w = D.fournisseurs.includes(p.gagnant) ? `--w:var(--f${D.fournisseurs.indexOf(p.gagnant)})` : '';
+  const offres = [...p.offres].sort((a, b) => a.pu - b.pu);
+  const barres = offres.map(o => `<div class="prix ${o.f === p.gagnant ? 'gagne' : ''}" style="${couleur(o.f)}">
+      <span class="qui" title="${esc(o.f)}">${esc(o.f)}</span>
+      <span class="piste"><i style="width:${o.pu / max * 100}%"></i></span>
+      <span class="val">${eur(o.pu)}</span></div>`).join('');
+  let verdict;
+  if (D.fournisseurs.includes(p.gagnant)) {
+    verdict = `<span class="pastille" style="${couleur(p.gagnant)}">${esc(p.gagnant)}</span>
+      <span class="gain"><b>${eur(p.ecart)} ${esc(p.unite)}</b> de moins${p.pct != null ? ` (${pct(p.pct)})` : ''}</span>`;
+  } else if (p.gagnant === 'égalité') {
+    verdict = '<span class="gain">Égalité</span>';
+  } else verdict = '';
+  const lignes = p.offres.map(o => `<tr>
+      <td><span class="point" style="${couleur(o.f)}"></span>${esc(o.f)}</td>
+      <td>${esc(o.lib)}<br><small>Réf. ${esc(o.ref)}</small></td>
+      <td class="r">${eur(o.cad, 3)} €/${esc(o.uc)}</td><td>${jour(o.dcad)}</td>
+      <td class="r">${o.fac == null ? '' : eur(o.fac, 3) + ' €'}</td><td>${jour(o.dfac)}</td>
+      <td class="r">${eur(o.pu)}</td><td>${esc(o.origine)}</td>
+      <td><span class="tag ${o.fiable === 'à vérifier' ? 'warn' : o.fiable === 'vu sur facture' ? 'ok' : 'neutre'}">${esc(o.fiable)}</span></td></tr>`).join('');
+  return `<details class="p ${hors ? 'hors' : ''}" style="${w}">
+    <summary>
+      <div class="nom"><b>${esc(p.nom)}</b><small>${esc(p.unite)}</small></div>
+      <div class="echelle">${barres}</div>
+      <div class="verdict">${verdict}<div class="tags">${tags(p)}</div></div>
+    </summary>
+    <div class="detail">
+      ${p.note ? `<p>${esc(p.note)}</p>` : ''}
+      <div class="defile"><table style="min-width:760px"><thead><tr><th>Fournisseur</th><th>Libellé</th><th class="r">Cadencier</th><th>Du</th><th class="r">Facture</th><th>Du</th><th class="r">Retenu ${esc(p.unite)}</th><th>Origine</th><th>Unité</th></tr></thead><tbody>${lignes}</tbody></table></div>
+    </div>
+  </details>`;
+}
+
+function dessinerListe() {
+  const q = $('q').value.trim().toLowerCase();
+  const fam = $('fam').value, tri = $('tri').value;
+  const etat = ETATS.find(e => e.id === filtre.etat);
+  let l = D.produits.filter(p =>
+    (!q || p.nom.toLowerCase().includes(q) || p.offres.some(o => o.lib.toLowerCase().includes(q))) &&
+    (!fam || p.famille === fam) &&
+    (!filtre.gagnant || p.gagnant === filtre.gagnant) &&
+    (!etat || (p.gagnant !== 'non comparable' && p.gagnant !== 'seul' && etat.test(p))));
+  if (tri === 'ecart') l = [...l].sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
+  if (tri === 'nom') l = [...l].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  $('compte').textContent = `${l.length} produit${l.length > 1 ? 's' : ''}`;
+  $('raz').hidden = !(q || fam || filtre.gagnant || filtre.etat);
+  if (!l.length) { $('liste').innerHTML = '<div class="vide">Aucun produit ne correspond. Essaie un autre mot, ou touche « Tout afficher ».</div>'; return; }
+  if (tri === 'fam') {
+    const familles = [...new Set(l.map(p => p.famille))];
+    $('liste').innerHTML = familles.map(f => `<h2 class="groupe">${esc(f)}</h2>` + l.filter(p => p.famille === f).map(carte).join('')).join('');
+  } else $('liste').innerHTML = l.map(carte).join('');
+}
+
+function dessinerFactures() {
+  const f = $('ffo').value, diff = $('fdiff').checked;
+  const l = D.factures.filter(x => (!f || x.f === f) && (!diff || Math.abs(x.ecart) >= .005));
+  $('fcompte').textContent = `${l.length} référence${l.length > 1 ? 's' : ''} sur ${D.factures.length}`;
+  $('ftab').innerHTML = l.map(x => {
+    const cls = Math.abs(x.ecart) < .005 ? 'neutre' : x.ecart < 0 ? 'ok' : 'bad';
+    const signe = x.ecart > 0 ? '+' : '';
+    return `<tr><td><span class="point" style="${couleur(x.f)}"></span>${esc(x.f)}</td><td>${esc(x.lib)}</td>
+      <td class="r">${eur(x.cad, 3)}</td><td>${jour(x.dcad)}</td><td class="r">${eur(x.fac, 3)}</td><td>${jour(x.dfac)}</td>
+      <td class="r"><span class="tag ${cls}">${signe}${eur(x.ecart * 100, 1)} %</span>${x.promo ? ' <span class="tag neutre">promo</span>' : ''}</td><td>${x.n}</td></tr>`;
+  }).join('') || '<tr><td colspan="8">Aucune facture retrouvée pour ce choix.</td></tr>';
+}
+
+function dessinerEvolutions() {
+  if (!D.evolutions.length) { $('evo').innerHTML = '<div class="vide">Il faut deux cadenciers d\'un même fournisseur pour voir des évolutions.</div>'; return; }
+  $('evo').innerHTML = `<div class="tableau defile"><table><thead><tr><th>Fournisseur</th><th>Produit</th><th class="r">Ancien prix</th><th>Du</th><th class="r">Nouveau prix</th><th>Du</th><th class="r">Évolution</th></tr></thead><tbody>` +
+    D.evolutions.map(x => `<tr><td><span class="point" style="${couleur(x.f)}"></span>${esc(x.f)}</td><td>${esc(x.lib)}</td>
+      <td class="r">${eur(x.avant, 3)}</td><td>${jour(x.davant)}</td><td class="r">${eur(x.apres, 3)}</td><td>${jour(x.dapres)}</td>
+      <td class="r"><span class="tag ${x.ecart < 0 ? 'ok' : 'bad'}">${x.ecart > 0 ? '+' : ''}${eur(x.ecart * 100, 1)} %</span></td></tr>`).join('') + '</tbody></table></div>';
+}
+
+function rafraichir() { dessinerBilan(); dessinerListe(); }
+
+document.querySelector('.bilan').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.f) { filtre.gagnant = filtre.gagnant === b.dataset.f ? null : b.dataset.f; }
+  if (b.dataset.e) { filtre.etat = filtre.etat === b.dataset.e ? null : b.dataset.e; }
+  montrer('produits'); rafraichir();
+});
+document.querySelector('.onglets').addEventListener('click', e => { const b = e.target.closest('button'); if (b) montrer(b.dataset.v); });
+function montrer(v) {
+  for (const n of ['produits', 'factures', 'evolutions']) {
+    $('v-' + n).hidden = n !== v;
+    $('o-' + n).setAttribute('aria-selected', n === v);
+  }
+}
+$('raz').addEventListener('click', () => { filtre.gagnant = filtre.etat = null; $('q').value = ''; $('fam').value = ''; rafraichir(); });
+['q', 'fam', 'tri'].forEach(i => $(i).addEventListener('input', dessinerListe));
+['ffo', 'fdiff'].forEach(i => $(i).addEventListener('input', dessinerFactures));
+
+$('fam').innerHTML = '<option value="">Toutes les familles</option>' + [...new Set(D.produits.map(p => p.famille))].map(f => `<option>${esc(f)}</option>`).join('');
+$('ffo').innerHTML = '<option value="">Tous les fournisseurs</option>' + [...new Set(D.factures.map(x => x.f))].map(f => `<option>${esc(f)}</option>`).join('');
+rafraichir(); dessinerFactures(); dessinerEvolutions();
+</script>
