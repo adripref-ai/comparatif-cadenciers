@@ -66,7 +66,7 @@ Continuer sans attendre. Seule une personne du métier sait si deux produits se 
 
 1. Lancer `scripts/preparer_cadencier.py <dossier>`. Il crée ou complète, sans jamais effacer une saisie :
    - `fournisseurs.csv` : jours de livraison et livraisons par semaine déduits des factures, délai de commande (1 jour par défaut), franco. Compléter ce qu'un document donne : Sysco imprime ses « Jours de livraison » (`Ma J V` s'écrit `mar jeu ven`). Un jour suivi de `?` vient d'une seule livraison : le faire confirmer.
-   - `stocks.csv` : une ligne par référence achetée. Le client y met son stock et sa date, et peut y imposer une consommation par semaine (`conso_semaine`) quand l'estimation est fausse ou absente.
+   - `stocks.csv` : une ligne par référence achetée. Le client y met son stock et sa date, et peut y imposer une consommation par semaine (`conso_semaine`) quand l'estimation est fausse ou absente, ou un colisage (`colisage`).
 2. Écrire `familles.csv` (`fournisseur,ref,famille`) pour les références qui ne sont pas dans `appariements.csv`, avec les mêmes familles. Sinon elles restent « À classer » dans la mercuriale.
 3. La consommation par semaine s'estime sur les quantités achetées, rapportées à la période où l'on observe le fournisseur. Elle suppose que le stock ne bouge pas d'une livraison à l'autre : la faire valider. Avec une seule livraison et un rythme inconnu, elle reste à saisir.
 4. `securite_jours` dans `config.json` règle les jours de stock de sécurité (2 par défaut).
@@ -89,11 +89,11 @@ Quand le client a choisi Google Sheets, ou n'arrive pas à se connecter à Excel
    - **sinon, le client le fait** : lui remettre le classeur et lui dire « Sur drive.google.com : Nouveau, Importer un fichier, choisir le classeur ».
 2. Ouvrir le fichier puis faire Fichier, Enregistrer au format Google Sheets, sauf s'il a été converti en route. La mise à jour par remplacement n'existe que sur une feuille Google.
 3. Vérifier que les onglets Comparatif et Cadencier de commande n'affichent aucune erreur (`#N/A`, `#ERROR!`, `#NAME?`).
-4. Noter l'adresse de la feuille dans `config.json`, clé `google_sheets`.
+4. Noter l'adresse de la feuille dans `config.json`, clé `google_sheets`. Cette clé, comme `artefact` et `tableur`, ne demande pas de reconstruire le classeur.
 
 Ne jamais saisir le mot de passe Google du client : il se connecte lui-même. La feuille contient ses prix négociés : la laisser privée, et ne la partager qu'avec les personnes qu'il désigne.
 
-Pour une mise à jour : reprendre d'abord les stocks saisis dans la feuille (voir « Commander »), reconstruire le classeur, puis, dans la feuille Google : Fichier, Importer, Importer, choisir le nouveau classeur, « Remplacer la feuille de calcul ». L'adresse reste la même.
+Pour une mise à jour : reprendre d'abord les saisies de la feuille (voir « Commander ») : sans cela, la remplacer les efface. Reconstruire le classeur, puis, dans la feuille Google : Fichier, Importer, Importer, choisir le nouveau classeur, « Remplacer la feuille de calcul ». L'adresse reste la même.
 
 ## Étape 5 · Publier la page interactive
 
@@ -125,13 +125,19 @@ Pour le cadencier de commande, dire aussi quelles consommations sont estimées e
 
 Quand le client donne ses stocks (liste, photo d'inventaire, collage depuis la page) : les reporter dans `stocks.csv` avec la date, puis relancer les étapes 4 et 5.
 
-S'il les a saisis dans son tableur, lancer `scripts/reprendre_stocks.py <dossier> <fichier> [--date JJ/MM/AAAA]`, avant de reconstruire le classeur, qui repart de `stocks.csv` :
+S'il les a saisis dans son tableur ou sur la page, lancer `scripts/reprendre_stocks.py <dossier> <fichier> [--date JJ/MM/AAAA]` avant de reconstruire le classeur :
 
-- Excel ou LibreOffice : le classeur qu'il a rempli ;
-- Google Sheets : la feuille téléchargée (Fichier, Télécharger, Microsoft Excel), ou l'onglet Cadencier de commande relu avec le connecteur Google Sheets et recopié en CSV, ligne de titres comprise ;
-- la page : le texte du bouton « Copier les stocks », enregistré en CSV.
+- Excel ou LibreOffice : inutile, `comparer.py` reprend tout seul le classeur du dossier avant de le refaire ;
+- Google Sheets : la feuille téléchargée (Fichier, Télécharger, Microsoft Excel), ou l'onglet Cadencier de commande relu avec le connecteur Google Sheets et recopié en CSV, ligne de titres et colonne cachée comprises ;
+- la page : le texte du bouton « Copier les stocks », enregistré en CSV. Il ne contient que les stocks tapés sur la page, avec leur date.
 
-Il reprend le stock, sa date et une consommation corrigée à la main, sans jamais effacer une saisie par une case vide. Un stock sans date prend celle de `--date`, sinon celle du jour. Les livraisons, le délai et la sécurité changés dans le tableur ne sont pas repris : les reporter dans `fournisseurs.csv` ou `config.json`. Une référence inconnue est signalée, pas ajoutée.
+Seules les cases que le client a changées sont reprises : la colonne cachée « Valeurs d'origine » garde ce que le classeur contenait à sa construction.
+
+- Stock, date, consommation et colisage vont dans `stocks.csv` ; livraisons par semaine et délai dans `fournisseurs.csv`, quand les lignes d'un fournisseur disent la même chose.
+- Un stock changé sans changer sa date prend celle de `--date`, sinon celle du jour. Un stock plus ancien que celui de `stocks.csv` n'est pas repris.
+- Une case vidée n'efface rien. La sécurité, commune à tout le cadencier, est seulement signalée.
+
+Lire tout le compte rendu au client : une valeur illisible (« 12 packs »), une date illisible, une référence inconnue, un stock plus ancien, un réglage différent selon les lignes ou un classeur d'une version précédente y sont signalés. Ces cas se règlent avec lui.
 
 Ensuite, donner par fournisseur les quantités à commander et le montant estimé. Rappeler le prochain jour de livraison et, quand un autre fournisseur est moins cher sur un produit, le signaler sans changer la commande. Ne jamais passer la commande soi-même.
 

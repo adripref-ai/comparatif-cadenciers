@@ -173,7 +173,7 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
   </section>
 
   <section class="vue" id="v-commande" hidden>
-    <p class="meta">Ce que le client achète, avec sa consommation par semaine estimée sur les factures. Saisis le stock : la quantité à commander couvre jusqu'à la livraison suivante, plus le délai et la sécurité, arrondie au colis. Les stocks saisis ici restent dans ce navigateur : « Copier les stocks » les met au presse-papiers pour les reporter dans stocks.csv.</p>
+    <p class="meta">Ce que le client achète, avec sa consommation par semaine estimée sur les factures. Saisis le stock : la quantité à commander couvre jusqu'à la livraison suivante, plus le délai et la sécurité, arrondie au colis. Les stocks saisis ici restent dans ce navigateur, jusqu'à ce qu'un stock plus récent arrive par le classeur : « Copier les stocks » met ceux que tu as tapés au presse-papiers, pour que Claude les reprenne.</p>
     <div class="outils">
       <select id="kfo" aria-label="Fournisseur"></select>
       <button class="lien" id="kcopie">Copier les stocks</button>
@@ -351,14 +351,30 @@ function dessinerMercuriale() {
   $('mtab').innerHTML = html;
 }
 
+// Arrondi comme ROUND dans Excel : d'abord à 15 chiffres significatifs, puis la moitié s'éloigne de zéro
+function arrondi(v, n) {
+  const r = Number(Math.round(Number(Number(v.toPrecision(15)) + 'e' + n)) + 'e-' + n);
+  return Number.isFinite(r) ? r : Math.round(v * 10 ** n) / 10 ** n;
+}
+const aujourdhui = () => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+// Stocks tapés sur la page : {valeur, date de saisie}, gardés dans ce navigateur.
+// Un stock du classeur daté d'un jour suivant l'emporte : il a été repris ou recompté depuis.
 const CLE_STOCKS = 'stocks:' + D.client;
 let stocksSaisis = {};
 try { stocksSaisis = JSON.parse(localStorage.getItem(CLE_STOCKS) || '{}'); } catch (e) { stocksSaisis = {}; }
 const cleK = x => x.f + '|' + x.ref;
-const stockDe = x => stocksSaisis[cleK(x)] ?? x.stock;
+for (const x of D.cadencier || []) {
+  const s = stocksSaisis[cleK(x)];
+  if (s == null) continue;
+  const d = typeof s === 'object' ? s.d : '';
+  if (x.stock != null && (!d || (x.dstock && x.dstock > d))) delete stocksSaisis[cleK(x)];
+}
+try { localStorage.setItem(CLE_STOCKS, JSON.stringify(stocksSaisis)); } catch (e) {}
+const saisie = x => { const s = stocksSaisis[cleK(x)]; return s == null ? null : typeof s === 'object' ? s : {v: s, d: ''}; };
+const stockDe = x => saisie(x)?.v ?? x.stock;
 function commande(x) {
   if (x.conso == null || !x.lps) return {besoin: null, qte: null, txt: 'conso. ou livraisons à saisir'};
-  const besoin = Math.round(x.conso / 7 * (7 / x.lps + x.delai + x.secu) * 100) / 100;
+  const besoin = arrondi(x.conso / 7 * (7 / x.lps + x.delai + x.secu), 2);
   const s = stockDe(x);
   if (s == null || s === '') return {besoin, qte: null, txt: 'stock à saisir'};
   const c = x.colis || 1, manque = Math.max(0, besoin - s);
@@ -387,14 +403,16 @@ function dessinerCommande() {
 }
 $('ktab').addEventListener('change', e => {
   const i = e.target.closest('input[data-k]'); if (!i) return;
-  if (i.value === '') delete stocksSaisis[i.dataset.k]; else stocksSaisis[i.dataset.k] = Number(i.value);
+  if (i.value === '') delete stocksSaisis[i.dataset.k]; else stocksSaisis[i.dataset.k] = {v: Number(i.value), d: aujourdhui()};
   try { localStorage.setItem(CLE_STOCKS, JSON.stringify(stocksSaisis)); } catch (e) {}
   dessinerCommande();
 });
 $('kcopie').addEventListener('click', async () => {
-  const lignes = ['fournisseur,ref,stock'].concat((D.cadencier || []).filter(x => stockDe(x) != null && stockDe(x) !== '')
-    .map(x => `"${x.f}",${x.ref},${stockDe(x)}`));
-  try { await navigator.clipboard.writeText(lignes.join('\n')); $('kcopie').textContent = 'Stocks copiés'; }
+  // Seulement les stocks tapés sur la page, avec le jour où ils l'ont été
+  const tapes = (D.cadencier || []).filter(x => saisie(x));
+  if (!tapes.length) { $('kcopie').textContent = 'Aucun stock tapé ici'; return; }
+  const lignes = ['fournisseur,ref,stock,date_stock'].concat(tapes.map(x => `"${x.f}",${x.ref},${saisie(x).v},${saisie(x).d}`));
+  try { await navigator.clipboard.writeText(lignes.join('\n')); $('kcopie').textContent = `${tapes.length} stock${tapes.length > 1 ? 's' : ''} copié${tapes.length > 1 ? 's' : ''}`; }
   catch (e) { $('kcopie').textContent = 'Copie impossible ici'; }
 });
 

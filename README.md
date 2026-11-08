@@ -38,7 +38,7 @@ Chaque client a son propre dossier : aucune donnée de client n'est gardée dans
 - Python 3 avec PyMuPDF et openpyxl.
 - Un tableur au choix :
   - Microsoft Excel ou LibreOffice, qui calculent aussi le classeur à l'avance. Sur Mac, le calcul se fait sur une copie rangée dans le dossier d'Excel, sans fenêtre d'autorisation.
-  - Google Sheets, pour un client sans Excel : Claude met le classeur dans son Google Drive, avec Chrome ou le connecteur Google Drive, ou lui dit comment l'importer. Les stocks saisis dans la feuille se reprennent ensuite avec `reprendre_stocks.py`.
+  - Google Sheets, pour un client sans Excel : Claude met le classeur dans son Google Drive, avec Chrome ou le connecteur Google Drive, ou lui dit comment l'importer. Ce qui est saisi dans la feuille se reprend ensuite avec `reprendre_stocks.py`. Avec Excel ou LibreOffice, la reprise est automatique.
 - Sans tableur, la page interactive fonctionne quand même.
 
 ## Limites

@@ -6,11 +6,12 @@ jours de livraison, stock, et quantité à commander pour tenir jusqu'à la livr
 
 Les réglages modifiables vivent dans le dossier du client :
 - fournisseurs.csv : fournisseur, jours_livraison, livraisons_par_semaine, delai_jours, franco_eur, source
-- stocks.csv : fournisseur, ref, libelle, stock, unite, date_stock, conso_semaine
+- stocks.csv : fournisseur, ref, libelle, stock, unite, date_stock, conso_semaine, colisage
 - familles.csv (facultatif) : fournisseur, ref, famille
 preparer_cadencier.py les crée et les complète sans effacer ce que le client a déjà saisi.
 """
 import csv
+import json
 from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
@@ -19,10 +20,13 @@ from lecteurs import cle_ref, nombre
 
 JOURS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
 CHAMPS_FOURNISSEURS = ["fournisseur", "jours_livraison", "livraisons_par_semaine", "delai_jours", "franco_eur", "source"]
-CHAMPS_STOCKS = ["fournisseur", "ref", "libelle", "stock", "unite", "date_stock", "conso_semaine"]
+CHAMPS_STOCKS = ["fournisseur", "ref", "libelle", "stock", "unite", "date_stock", "conso_semaine", "colisage"]
 DELAI_DEFAUT = 1
 SECURITE_DEFAUT = 2
-ESTIMATION = "Estimation d'origine (ne pas modifier)"
+# Colonne cachée du cadencier de commande : les valeurs écrites à la construction, pour que
+# reprendre_stocks.py ne reprenne que les cases que le client a changées.
+ORIGINE = "Valeurs d'origine (ne pas modifier)"
+ESTIMATION = "Estimation d'origine (ne pas modifier)"  # nom de cette colonne en 0.7.0, qui ne gardait que la conso
 
 # Fonctions de tableur reconnues à la fois par Excel, LibreOffice et Google Sheets.
 # Le classeur ne doit utiliser qu'elles, pour s'ouvrir chez un client qui n'a pas Excel.
@@ -205,7 +209,7 @@ def ajouter_onglets(wb, ici, config, recent, produits, outils, comparatif):
            "Consommation par semaine", "Base de l'estimation", "Jours de livraison", "Livraisons par semaine",
            "Délai de commande (jours)", "Sécurité (jours)", "Stock", "Date du stock",
            "Besoin jusqu'à la livraison suivante", "À commander", "Dernier prix payé", "Montant estimé",
-           "Moins cher (comparatif)", ESTIMATION]
+           "Moins cher (comparatif)", ORIGINE]
     entete(wk, 1, tit)
     stocks = {(s["fournisseur"], cle_ref(s["ref"])): s for s in lire_csv(Path(ici) / "stocks.csv")}
     securite = config.get("securite_jours", SECURITE_DEFAUT)
@@ -219,24 +223,28 @@ def ajouter_onglets(wb, ici, config, recent, produits, outils, comparatif):
     for r, (_, fam, nom, four, lib, cle, c, s) in enumerate(lignes, 2):
         reg = reglages.get(four, {})
         conso_saisie = nombre_ou_vide(s.get("conso_semaine"))
+        colis = nombre_ou_vide(s.get("colisage"))
+        if colis is None and c:
+            colis = c["colisage"]
+        conso_k = conso_saisie if conso_saisie is not None else (c["conso"] if c else None)
+        delai = reg.get("delai") if reg.get("delai") is not None else DELAI_DEFAUT
+        stock = nombre_ou_vide(s.get("stock"))
+        origine = json.dumps(dict(stock=stock, date=s.get("date_stock") or "", conso=conso_k, colis=colis,
+                                  lps=reg.get("lps"), delai=delai, secu=securite))
         valeurs = [fam, "" if nom == "~" else nom, four, (c or s)["ref"], lib, (c or s).get("unite", ""),
-                   c["colisage"] if c else None,
-                   conso_saisie if conso_saisie is not None else (c["conso"] if c else None),
+                   colis, conso_k,
                    "saisie dans stocks.csv" if conso_saisie is not None else (c["base"] if c else "aucun achat relevé"),
                    reg.get("jours_livraison", ""), reg.get("lps"),
-                   reg.get("delai") if reg.get("delai") is not None else DELAI_DEFAUT, securite,
-                   nombre_ou_vide(s.get("stock")), jour(s.get("date_stock") or ""),
+                   delai, securite, stock, jour(s.get("date_stock") or ""),
                    f'=IF(OR(H{r}="",K{r}="",K{r}=0),"",ROUND(H{r}/7*(7/K{r}+L{r}+M{r}),2))',
                    f'=IF(P{r}="","conso. ou livraisons à saisir",IF(N{r}="","stock à saisir",'
                    f'CEILING(MAX(0,P{r}-N{r}),IF(N(G{r})<=0,1,G{r}))))',
                    c["dernier_prix"] if c else None,
                    f'=IF(AND(ISNUMBER(Q{r}),ISNUMBER(R{r})),ROUND(Q{r}*R{r},2),"")',
-                   verdict(r),
-                   # Consommation écrite au départ : reprendre_stocks.py y voit si le client l'a corrigée
-                   conso_saisie if conso_saisie is not None else (c["conso"] if c else None)]
+                   verdict(r), origine]
         for k, v in enumerate(valeurs, 1):
             cell = wk.cell(r, k, v)
-            if k in (7, 8, 11, 12, 13, 14):
+            if k in (7, 8, 11, 12, 13, 14, 15):
                 cell.font = bleu
         for k, fmt in ((8, "0.00"), (11, "0.##"), (16, "0.00"), (18, "0.000"), (19, "0.00")):
             wk.cell(r, k).number_format = fmt

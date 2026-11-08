@@ -21,6 +21,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter as L
 
 from lecteurs import SEUIL_UNITE, cle_ref, nombre, unite_confirmee
+from reprendre_stocks import Illisible, lire_saisies, reprendre
 from suivi import ajouter_onglets, fonctions_incompatibles
 
 ICI = None
@@ -38,6 +39,9 @@ BORD = Border(bottom=fin)
 def lire(nom):
     return list(csv.DictReader(open(ICI / nom, encoding="utf-8-sig")))
 
+
+# Clés de config.json qui changent le classeur. Les autres (artefact, google_sheets, tableur) n'y sont pas.
+CONFIG_UTILE = ("client", "factures", "provisoire", "securite_jours")
 
 def jour(txt):
     return date.fromisoformat(txt) if txt else None
@@ -69,6 +73,15 @@ def main():
     config = json.load(open(ICI / "config.json", encoding="utf-8"))
     client = config["client"]
     SORTIE = ICI / "Comparatif-fournisseurs.xlsx"
+    # Ce que le client a saisi dans le classeur existant serait perdu à la reconstruction : on le reprend
+    if SORTIE.exists():
+        try:
+            saisies, a_origine = lire_saisies(SORTIE)
+        except Illisible:
+            saisies, a_origine = [], False
+        if saisies and a_origine:
+            for ligne in reprendre(ICI, saisies, a_origine, date.today().isoformat(), SORTIE.name, auto=True):
+                print("Reprise du classeur existant : " + ligne)
     tarifs = lire("tarifs.csv")
     recent = {}
     for t in tarifs:
@@ -388,7 +401,7 @@ def main():
         ("But", "Comparer les prix des fournisseurs à partir de leurs cadenciers" + (", contrôlés sur les factures." if factures else ". Aucune facture n'a servi au contrôle.")),
         ("Comparatif", "Un produit par ligne, un fournisseur par colonne. Le prix le plus bas ressort en vert."),
         ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé et le verdict du comparatif."),
-        ("Cadencier de commande", "Ce que le client achète : consommation par semaine estimée sur les factures, jours de livraison, stock et quantité à commander pour tenir jusqu'à la livraison suivante, arrondie au colis. Les cases en bleu se corrigent à la main : stock, consommation, livraisons, délai, sécurité."),
+        ("Cadencier de commande", "Ce que le client achète : consommation par semaine estimée sur les factures, jours de livraison, stock et quantité à commander pour tenir jusqu'à la livraison suivante, arrondie au colis. Les cases en bleu se corrigent à la main : colisage, consommation, livraisons, délai, sécurité, stock et sa date. Changer la date quand on recompte : sinon un nouveau stock est daté du jour où Claude le reprend. Ne pas toucher la dernière colonne, cachée, qui sert à repérer ce qui a été changé."),
         ("Détail", "D'où vient chaque prix : libellé, date, quantité, facture. Les prix en bleu se corrigent à la main, le reste suit."),
         ("Cadencier contre facture", "Prix du cadencier face au dernier prix payé, pour chaque référence retrouvée sur une facture."),
         ("Évolutions", "Prix qui ont changé entre deux cadenciers d'un même fournisseur."),
@@ -398,7 +411,7 @@ def main():
         ("Résultat solide", "Prix à 3 mois d'écart au plus, aucune offre expirée, aucune unité à vérifier. Mêmes règles que la page interactive."),
         ("Prix retenu", f"Le prix du cadencier, ou celui de la dernière facture hors promotion si elle est plus récente et à moins de {SEUIL_UNITE:.0%} du cadencier. Plus loin, la facture est sans doute dans une autre unité : son prix n'est pas retenu et la note de lecture le signale."),
         ("Non comparable", "Produit affiché pour mémoire, jamais compté dans le bilan."),
-        ("Tableur", "Ce classeur s'ouvre dans Excel, LibreOffice ou Google Sheets. Pour Google Sheets : dans Google Drive, Nouveau, Importer un fichier, l'ouvrir, puis Fichier, Enregistrer au format Google Sheets. Pour une mise à jour, dans la feuille Google : Fichier, Importer, Remplacer la feuille de calcul, ce qui garde la même adresse. Avant, télécharger la feuille au format Excel pour que Claude reprenne les stocks saisis."),
+        ("Tableur", "Ce classeur s'ouvre dans Excel, LibreOffice ou Google Sheets. Pour Google Sheets : dans Google Drive, Nouveau, Importer un fichier, l'ouvrir, puis Fichier, Enregistrer au format Google Sheets. Pour une mise à jour, dans la feuille Google : Fichier, Importer, Remplacer la feuille de calcul, ce qui garde la même adresse. Avant, télécharger la feuille au format Excel pour que Claude reprenne ce qui y a été saisi : sinon le remplacement l'efface."),
         ("Limites", "Les correspondances entre produits ont été proposées par Claude et restent à valider. Quand un document ne porte pas de date, c'est celle du fichier qui est utilisée. Ce sont des prix HT, hors franco, remises de fin d'année et frais de livraison."),
     ]
     for i, (k, v) in enumerate(lignes, 3):
@@ -408,6 +421,8 @@ def main():
         c.alignment = Alignment(wrap_text=True, vertical="top")
         wl.cell(i, 1).alignment = Alignment(vertical="top")
     wb.active = 1
+    # Réglages lus dans config.json : la page vérifie qu'ils n'ont pas changé depuis
+    wb.properties.keywords = json.dumps({k: config.get(k) for k in CONFIG_UTILE}, ensure_ascii=False)
     hors_liste = fonctions_incompatibles(wb)
     if hors_liste:
         print("ATTENTION : fonctions peut-être absentes de Google Sheets : " + ", ".join(hors_liste))

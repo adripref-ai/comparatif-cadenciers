@@ -7,7 +7,7 @@ Les résultats sont recalculés ici à partir des prix du classeur, avec les mê
 formules : la page ne dépend donc pas d'Excel, et une correction faite dans le classeur est reprise.
 """
 import json
-import math
+from decimal import ROUND_HALF_UP, Decimal
 import sys
 from datetime import date, datetime
 from html import escape
@@ -30,8 +30,9 @@ def jour(v):
 
 
 def arrondi(x, n):
-    """Arrondi comme ROUND dans Excel (moitié vers le haut), pour que page et classeur concordent."""
-    return math.floor(x * 10 ** n + 0.5) / 10 ** n
+    """Arrondi comme ROUND dans Excel, pour que page et classeur concordent : Excel arrondit d'abord à
+    15 chiffres significatifs (5,004999999999999 devient 5,005), puis la moitié s'éloigne de zéro."""
+    return float(Decimal(f"{x:.15g}").quantize(Decimal(1).scaleb(-n), rounding=ROUND_HALF_UP))
 
 
 def table(ws, ligne_titres):
@@ -50,13 +51,21 @@ def main():
     config = json.load(open(dossier / "config.json", encoding="utf-8"))
     client = config["client"]
     # Une page refaite à partir d'un classeur périmé afficherait d'anciens chiffres
-    entrees = [dossier / n for n in ("tarifs.csv", "appariements.csv", "controle_factures.csv", "config.json",
-                                     "achats.csv", "fournisseurs.csv", "stocks.csv", "familles.csv")]
-    plus_recente = max((p for p in entrees if p.exists()), key=lambda p: p.stat().st_mtime, default=None)
-    if not classeur.exists() or (plus_recente and plus_recente.stat().st_mtime > classeur.stat().st_mtime):
-        sys.exit(f"Classeur absent ou plus ancien que {plus_recente.name if plus_recente else 'ses données'} : "
-                 "relancer comparer.py d'abord.")
+    if not classeur.exists():
+        sys.exit("Classeur absent : lancer comparer.py d'abord.")
     wb = openpyxl.load_workbook(classeur)
+    noms = ["tarifs.csv", "appariements.csv", "controle_factures.csv", "achats.csv", "fournisseurs.csv",
+            "stocks.csv", "familles.csv"]
+    try:  # comparer.py note dans le classeur les réglages de config.json qu'il a utilisés
+        utilise = json.loads(wb.properties.keywords or "")
+        if any(config.get(k) != v for k, v in utilise.items()):
+            sys.exit("config.json a changé depuis la construction du classeur : relancer comparer.py d'abord.")
+    except (ValueError, AttributeError):
+        noms.append("config.json")  # classeur d'une version précédente
+    entrees = [dossier / n for n in noms]
+    plus_recente = max((p for p in entrees if p.exists()), key=lambda p: p.stat().st_mtime, default=None)
+    if plus_recente and plus_recente.stat().st_mtime > classeur.stat().st_mtime:
+        sys.exit(f"Classeur plus ancien que {plus_recente.name} : relancer comparer.py d'abord.")
 
     wc = wb["Comparatif"]
     rang = next(r for r in range(1, 40) if wc.cell(r, 1).value == "Produit")
