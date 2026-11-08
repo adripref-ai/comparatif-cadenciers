@@ -3,7 +3,8 @@
 
 Usage : comparer.py <dossier du client>
 Nombre de fournisseurs libre : il suffit d'en ajouter dans appariements.csv.
-Tous les calculs restent des formules Excel, pour pouvoir corriger un prix à la main.
+Tous les calculs restent des formules, pour pouvoir corriger un prix à la main. Elles marchent dans Excel,
+LibreOffice et Google Sheets.
 """
 import csv
 import json
@@ -20,7 +21,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter as L
 
 from lecteurs import SEUIL_UNITE, cle_ref, nombre, unite_confirmee
-from suivi import ajouter_onglets
+from suivi import ajouter_onglets, fonctions_incompatibles
 
 ICI = None
 COULEURS = {"Sysco": "1D5FA6", "Pro à Pro": "1E7A3C", "Episaveurs": "B45309",
@@ -397,6 +398,7 @@ def main():
         ("Résultat solide", "Prix à 3 mois d'écart au plus, aucune offre expirée, aucune unité à vérifier. Mêmes règles que la page interactive."),
         ("Prix retenu", f"Le prix du cadencier, ou celui de la dernière facture hors promotion si elle est plus récente et à moins de {SEUIL_UNITE:.0%} du cadencier. Plus loin, la facture est sans doute dans une autre unité : son prix n'est pas retenu et la note de lecture le signale."),
         ("Non comparable", "Produit affiché pour mémoire, jamais compté dans le bilan."),
+        ("Tableur", "Ce classeur s'ouvre dans Excel, LibreOffice ou Google Sheets. Pour Google Sheets : dans Google Drive, Nouveau, Importer un fichier, l'ouvrir, puis Fichier, Enregistrer au format Google Sheets. Pour une mise à jour, dans la feuille Google : Fichier, Importer, Remplacer la feuille de calcul, ce qui garde la même adresse. Avant, télécharger la feuille au format Excel pour que Claude reprenne les stocks saisis."),
         ("Limites", "Les correspondances entre produits ont été proposées par Claude et restent à valider. Quand un document ne porte pas de date, c'est celle du fichier qui est utilisée. Ce sont des prix HT, hors franco, remises de fin d'année et frais de livraison."),
     ]
     for i, (k, v) in enumerate(lignes, 3):
@@ -406,6 +408,9 @@ def main():
         c.alignment = Alignment(wrap_text=True, vertical="top")
         wl.cell(i, 1).alignment = Alignment(vertical="top")
     wb.active = 1
+    hors_liste = fonctions_incompatibles(wb)
+    if hors_liste:
+        print("ATTENTION : fonctions peut-être absentes de Google Sheets : " + ", ".join(hors_liste))
     wb.save(SORTIE)
     print(f"{len(produits)} produits, {n} fournisseurs, {dern_d - 1} lignes de détail, "
           f"mercuriale de {nb_merc} références, cadencier de {nb_cad} références achetées -> {SORTIE.name}")

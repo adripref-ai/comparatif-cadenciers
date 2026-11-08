@@ -66,5 +66,6 @@ elif shutil.which("soffice"):
 else:
     reponse = "PAS_DE_TABLEUR"
 if reponse != "CALCULE":
-    reponse += ". Les formules se calculeront à l'ouverture du fichier."
+    reponse += (". Les formules se calculeront à l'ouverture du fichier, dans Excel, LibreOffice ou Google Sheets"
+                " (le mettre dans Google Drive, puis Fichier, Enregistrer au format Google Sheets).")
 print(reponse)

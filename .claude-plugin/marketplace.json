@@ -5,7 +5,7 @@
     {
       "name": "comparatif-cadenciers",
       "source": "./",
-      "description": "Compare les prix des fournisseurs à partir de leurs cadenciers, tient une mercuriale et un cadencier de commande, avec un classeur Excel et une page interactive."
+      "description": "Compare les prix des fournisseurs à partir de leurs cadenciers, tient une mercuriale et un cadencier de commande, avec un classeur Excel ou Google Sheets et une page interactive."
     }
   ]
 }

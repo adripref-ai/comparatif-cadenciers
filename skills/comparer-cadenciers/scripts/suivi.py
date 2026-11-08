@@ -22,6 +22,25 @@ CHAMPS_FOURNISSEURS = ["fournisseur", "jours_livraison", "livraisons_par_semaine
 CHAMPS_STOCKS = ["fournisseur", "ref", "libelle", "stock", "unite", "date_stock", "conso_semaine"]
 DELAI_DEFAUT = 1
 SECURITE_DEFAUT = 2
+ESTIMATION = "Estimation d'origine (ne pas modifier)"
+
+# Fonctions de tableur reconnues à la fois par Excel, LibreOffice et Google Sheets.
+# Le classeur ne doit utiliser qu'elles, pour s'ouvrir chez un client qui n'a pas Excel.
+COMPATIBLES = {"AND", "CEILING", "COUNT", "COUNTIF", "COUNTIFS", "IF", "IFERROR", "INDEX", "ISNUMBER", "ISTEXT",
+               "MATCH", "MAX", "MAXIFS", "MIN", "MINIFS", "N", "OR", "ROUND", "SMALL", "SUMIF", "TODAY"}
+
+
+def fonctions_incompatibles(wb):
+    """Fonctions du classeur absentes de COMPATIBLES : elles risquent de ne pas marcher dans Google Sheets."""
+    import re
+    vues = set()
+    for ws in wb:
+        for ligne in ws.iter_rows():
+            for c in ligne:
+                if isinstance(c.value, str) and c.value.startswith("="):
+                    sans_texte = re.sub(r'"[^"]*"', "", c.value)
+                    vues |= {f.replace("_xlfn.", "") for f in re.findall(r"([A-Z_][A-Z0-9_.]*)\(", sans_texte)}
+    return sorted(vues - COMPATIBLES)
 
 
 def lire_csv(chemin):
@@ -38,7 +57,7 @@ def ecrire_csv(chemin, champs, lignes):
 
 def nombre_ou_vide(v):
     try:
-        return nombre(v) if str(v or "").strip() else None
+        return nombre(v) if v is not None and str(v).strip() else None
     except ValueError:
         return None
 
@@ -186,7 +205,7 @@ def ajouter_onglets(wb, ici, config, recent, produits, outils, comparatif):
            "Consommation par semaine", "Base de l'estimation", "Jours de livraison", "Livraisons par semaine",
            "Délai de commande (jours)", "Sécurité (jours)", "Stock", "Date du stock",
            "Besoin jusqu'à la livraison suivante", "À commander", "Dernier prix payé", "Montant estimé",
-           "Moins cher (comparatif)"]
+           "Moins cher (comparatif)", ESTIMATION]
     entete(wk, 1, tit)
     stocks = {(s["fournisseur"], cle_ref(s["ref"])): s for s in lire_csv(Path(ici) / "stocks.csv")}
     securite = config.get("securite_jours", SECURITE_DEFAUT)
@@ -209,10 +228,12 @@ def ajouter_onglets(wb, ici, config, recent, produits, outils, comparatif):
                    nombre_ou_vide(s.get("stock")), jour(s.get("date_stock") or ""),
                    f'=IF(OR(H{r}="",K{r}="",K{r}=0),"",ROUND(H{r}/7*(7/K{r}+L{r}+M{r}),2))',
                    f'=IF(P{r}="","conso. ou livraisons à saisir",IF(N{r}="","stock à saisir",'
-                   f'CEILING(MAX(0,P{r}-N{r}),IF(G{r}="",1,G{r}))))',
+                   f'CEILING(MAX(0,P{r}-N{r}),IF(N(G{r})<=0,1,G{r}))))',
                    c["dernier_prix"] if c else None,
                    f'=IF(AND(ISNUMBER(Q{r}),ISNUMBER(R{r})),ROUND(Q{r}*R{r},2),"")',
-                   verdict(r)]
+                   verdict(r),
+                   # Consommation écrite au départ : reprendre_stocks.py y voit si le client l'a corrigée
+                   conso_saisie if conso_saisie is not None else (c["conso"] if c else None)]
         for k, v in enumerate(valeurs, 1):
             cell = wk.cell(r, k, v)
             if k in (7, 8, 11, 12, 13, 14):
@@ -231,6 +252,7 @@ def ajouter_onglets(wb, ici, config, recent, produits, outils, comparatif):
         wk.cell(r, 19, f'=SUMIF($C$2:$C${dern_k},C{r},$S$2:$S${dern_k})').number_format = "0.00"
     for k, w in enumerate((18, 26, 19, 9, 36, 8, 9, 11, 34, 12, 10, 10, 9, 9, 11, 12, 13, 10, 11, 19), 1):
         wk.column_dimensions[L(k)].width = w
+    wk.column_dimensions[L(len(tit))].hidden = True
     wk.freeze_panes = "F2"
     if dern_k >= 2:
         wk.auto_filter.ref = f"A1:{L(len(tit))}{dern_k}"

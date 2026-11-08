@@ -8,7 +8,7 @@ Compare les prix des fournisseurs d'un restaurant à partir de leurs cadenciers.
 2. Ramène les prix au kg, au litre ou à l'unité.
 3. Contrôle les prix et les unités sur les factures.
 4. Met en face les produits équivalents, avec validation par une personne du métier.
-5. Produit un classeur Excel : comparatif, mercuriale, cadencier de commande, détail, cadencier contre facture, évolutions.
+5. Produit un classeur, qui s'ouvre dans Excel, LibreOffice ou Google Sheets : comparatif, mercuriale, cadencier de commande, détail, cadencier contre facture, évolutions.
 6. Tient une mercuriale : tous les fournisseurs et tous leurs tarifs dans un seul tableau, avec le dernier prix payé.
 7. Tient un cadencier de commande : consommations estimées sur les factures, jours de livraison, stocks, et quantités à commander arrondies au colis.
 8. Publie une page interactive avec les mêmes chiffres : une couleur par fournisseur, barres de prix, filtres, recherche, et saisie des stocks pour voir tout de suite quoi commander.
@@ -36,7 +36,10 @@ Chaque client a son propre dossier : aucune donnée de client n'est gardée dans
 ## Ce qu'il faut
 
 - Python 3 avec PyMuPDF et openpyxl.
-- Microsoft Excel ou LibreOffice pour calculer le classeur à l'avance. Sur Mac, le calcul se fait sur une copie rangée dans le dossier d'Excel, sans fenêtre d'autorisation. Sans tableur, le classeur se calcule à la première ouverture et la page interactive fonctionne quand même.
+- Un tableur au choix :
+  - Microsoft Excel ou LibreOffice, qui calculent aussi le classeur à l'avance. Sur Mac, le calcul se fait sur une copie rangée dans le dossier d'Excel, sans fenêtre d'autorisation.
+  - Google Sheets, pour un client sans Excel : Claude met le classeur dans son Google Drive, avec Chrome ou le connecteur Google Drive, ou lui dit comment l'importer. Les stocks saisis dans la feuille se reprennent ensuite avec `reprendre_stocks.py`.
+- Sans tableur, la page interactive fonctionne quand même.
 
 ## Limites
 

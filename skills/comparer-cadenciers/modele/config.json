@@ -2,5 +2,6 @@
   "client": "Nom du restaurant",
   "factures": "factures",
   "provisoire": true,
-  "securite_jours": 2
+  "securite_jours": 2,
+  "tableur": ""
 }

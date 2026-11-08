@@ -1,9 +1,15 @@
 {
   "name": "comparatif-cadenciers",
-  "version": "0.6.0",
-  "description": "Compare les prix des fournisseurs d'un restaurant à partir de leurs cadenciers PDF ou Excel, contrôlés sur les factures, tient une mercuriale de tous les fournisseurs et un cadencier de commande (stocks, consommations, livraisons), et produit un classeur Excel et une page interactive.",
+  "version": "0.7.0",
+  "description": "Compare les prix des fournisseurs d'un restaurant à partir de leurs cadenciers PDF ou Excel, contrôlés sur les factures, tient une mercuriale de tous les fournisseurs et un cadencier de commande (stocks, consommations, livraisons), et produit un classeur (Excel, LibreOffice ou Google Sheets) et une page interactive.",
   "author": {
     "name": "Outils Restaurant"
   },
-  "keywords": ["restaurant", "fournisseurs", "cadencier", "prix", "achats"]
+  "keywords": [
+    "restaurant",
+    "fournisseurs",
+    "cadencier",
+    "prix",
+    "achats"
+  ]
 }
