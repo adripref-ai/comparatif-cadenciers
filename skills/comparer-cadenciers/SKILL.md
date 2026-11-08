@@ -73,7 +73,7 @@ Continuer sans attendre. Seule une personne du métier sait si deux produits se 
 
 ## Étape 4 · Construire le classeur
 
-1. Lancer `scripts/comparer.py <dossier>`. Il ajoute les onglets Mercuriale (tous les fournisseurs, tous les tarifs, dernier prix payé, verdict du comparatif) et Cadencier de commande (consommation, livraisons, stock, quantité à commander arrondie au colis, montant estimé par fournisseur). Les cases en bleu se corrigent dans le tableur. Il refuse une référence absente, une unité incohérente ou mélangée, deux références d'un même fournisseur pour un produit, un type ou une `qte_forcee` illisibles : corriger `appariements.csv`.
+1. Lancer `scripts/comparer.py <dossier>`. Il ajoute les onglets Meilleurs prix (pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son conditionnement et son prix, rangés par fournisseur), Mercuriale (tous les fournisseurs, tous les tarifs, dernier prix payé, verdict du comparatif) et Cadencier de commande (consommation, livraisons, stock, quantité à commander arrondie au colis, montant estimé par fournisseur). Les cases en bleu se corrigent dans le tableur. Il refuse une référence absente, une unité incohérente ou mélangée, deux références d'un même fournisseur pour un produit, un type ou une `qte_forcee` illisibles : corriger `appariements.csv`.
 2. Lancer `scripts/calculer_classeur.py <dossier>/Comparatif-fournisseurs.xlsx`. Il répond `CALCULE`, `PAS_CALCULE` avec la raison, ou `PAS_DE_TABLEUR`. Les deux dernières réponses ne sont pas bloquantes. Si `tableur` vaut `google_sheets`, passer à l'étape 4 bis. S'il n'est pas encore choisi, reposer la question avant l'étape 6.
 3. Si le classeur a été calculé, vérifier qu'il n'a aucune erreur de formule. Expliquer ou corriger chaque écart supérieur à 50 %.
 
@@ -110,7 +110,7 @@ Dire simplement :
 - le lien de la page, le chemin du classeur et, s'il y en a une, l'adresse de la feuille Google Sheets ;
 - combien de fichiers ont été lus, et ceux qui ne l'ont pas été ;
 - combien de lignes et de produits ont été comparés, et combien de références n'ont aucun équivalent chez un autre fournisseur ;
-- qui est le moins cher, en rappelant les limites ;
+- qui est le moins cher, en rappelant les limites, et que l'onglet Meilleurs prix donne la liste de ce qu'il vaut mieux acheter chez chacun ;
 - combien de résultats sont solides : prix à 3 mois d'écart au plus, au dixième de mois près, aucune offre expirée (une offre vaut jusqu'à son dernier jour inclus) et unités confirmées. Le classeur (colonne Résultat solide) et la page appliquent la même règle ;
 - les écarts entre cadencier et factures ;
 - la liste des correspondances à valider, à passer en revue avec le client.

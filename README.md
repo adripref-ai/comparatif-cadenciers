@@ -8,7 +8,7 @@ Compare les prix des fournisseurs d'un restaurant à partir de leurs cadenciers.
 2. Ramène les prix au kg, au litre ou à l'unité.
 3. Contrôle les prix et les unités sur les factures.
 4. Met en face les produits équivalents, avec validation par une personne du métier.
-5. Produit un classeur, qui s'ouvre dans Excel, LibreOffice ou Google Sheets : comparatif, mercuriale, cadencier de commande, détail, cadencier contre facture, évolutions.
+5. Produit un classeur, qui s'ouvre dans Excel, LibreOffice ou Google Sheets : comparatif, meilleurs prix (le fournisseur le moins cher de chaque produit, avec son conditionnement), mercuriale, cadencier de commande, détail, cadencier contre facture, évolutions.
 6. Tient une mercuriale : tous les fournisseurs et tous leurs tarifs dans un seul tableau, avec le dernier prix payé.
 7. Tient un cadencier de commande : consommations estimées sur les factures, jours de livraison, stocks, et quantités à commander arrondies au colis.
 8. Publie une page interactive avec les mêmes chiffres : une couleur par fournisseur, barres de prix, filtres, recherche, et saisie des stocks pour voir tout de suite quoi commander.

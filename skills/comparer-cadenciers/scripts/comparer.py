@@ -139,11 +139,14 @@ def main():
     tit = ["Produit", "Unité", "Fournisseur", "Réf.", "Libellé du cadencier", "Prix cadencier HT", "Unité de prix",
            "Date du cadencier", "Dernière facture hors promo", "Date de la facture", "Prix retenu HT",
            "Quantité par unité de prix", "Prix par unité de comparaison", "Date du prix retenu", "Origine du prix",
-           "Fiabilité", "Note de lecture", "Fin de validité", "Offre"]
+           "Fiabilité", "Note de lecture", "Fin de validité", "Offre", "Conditionnement"]
     entete(wd, 1, tit)
     r = 2
     cellule = {}
+    rangs = {}  # lignes du Détail de chaque produit, qui se suivent
+    prevu = {}  # prix par unité de comparaison attendu, pour ranger l'onglet Meilleurs prix
     for nom, p in produits.items():
+        rangs[nom] = (r, r + len(p["lignes"]) - 1)
         for a, t in p["lignes"]:
             f = factures.get((a["fournisseur"], cle_ref(a["ref"])))
             # Une facture confirme l'unité si son prix hors promo reste proche du cadencier. Sinon elle
@@ -180,6 +183,9 @@ def main():
             wd.cell(r, 18, jour(t["fin_validite"]))
             # Une offre est valable jusqu'à son dernier jour inclus
             wd.cell(r, 19, f'=IF(AND(R{r}<>"",O{r}="cadencier",R{r}<TODAY()),"expirée","")')
+            wd.cell(r, 20, t.get("conditionnement", ""))
+            retenu = float(f["prix_hors_promo"]) if confirme and f["date_hors_promo"] > t["date_tarif"] else float(t["prix"])
+            prevu[(nom, a["fournisseur"])] = round(retenu / qte, 4)
             cellule[(nom, a["fournisseur"])] = r
             r += 1
     dern_d = r - 1
@@ -189,7 +195,7 @@ def main():
             wd.cell(rr, c).number_format = fmt
         for c in (8, 10, 14, 18):
             wd.cell(rr, c).number_format = "dd/mm/yyyy"
-    for i, w in enumerate((36, 11, 19, 9, 44, 10, 8, 11, 11, 11, 10, 10, 12, 11, 10, 16, 40, 11, 9), 1):
+    for i, w in enumerate((36, 11, 19, 9, 44, 10, 8, 11, 11, 11, 10, 10, 12, 11, 10, 16, 40, 11, 9, 28), 1):
         wd.column_dimensions[L(i)].width = w
     wd.freeze_panes = "B2"
     if dern_d >= 2:
@@ -232,7 +238,9 @@ def main():
     r = premiere
     familles = list(OrderedDict.fromkeys(p["famille"] for p in produits.values()))
     ordre = sorted(produits.items(), key=lambda kv: (familles.index(kv[1]["famille"]), kv[1]["type"] == "different"))
+    rang_comp = {}
     for nom, p in ordre:
+        rang_comp[nom] = r
         wc.cell(r, 1, nom)
         wc.cell(r, 2, p["unite"])
         wc.cell(r, 3, p["famille"])
@@ -301,6 +309,70 @@ def main():
     for c, w in largeurs.items():
         wc.column_dimensions[L(c)].width = w
     wc.freeze_panes = wc.cell(premiere, 2)
+
+    # ---------- Meilleurs prix : le fournisseur le moins cher de chaque produit ----------
+    # Tout se lit dans le Comparatif et le Détail : corriger un prix change aussi cet onglet.
+    # Les lignes sont rangées par fournisseur d'après les prix du moment.
+    wm = wb.create_sheet("Meilleurs prix", 1)
+    wm["A1"] = f"Meilleurs prix · {client}"
+    wm["A1"].font = Font(name=POLICE, bold=True, size=14)
+    wm["A2"] = ("Pour chaque produit comparable, le fournisseur le moins cher, sa référence, son conditionnement et "
+                "son prix. Prix HT, hors franco, remises et frais de livraison.")
+    wm["A2"].font = Font(name=POLICE, size=10, color="55606E")
+    if config.get("provisoire", True):
+        wm["A3"] = "Résultat provisoire : les correspondances entre produits restent à valider."
+        wm["A3"].font = Font(name=POLICE, size=10, bold=True, color="B3261E")
+    titres = ["Fournisseur", "Famille", "Produit", "Réf.", "Libellé du fournisseur", "Conditionnement", "Prix HT",
+              "Unité de prix", "Prix par unité de comparaison", "Unité", "Moins cher que le 2e de", "Résultat solide",
+              "Remarque"]
+    rm = 5
+    entete(wm, rm, titres)
+    comparables = [(nom, p) for nom, p in ordre if p["type"] != "different" and len(p["lignes"]) >= 2]
+
+    def gagnant(nom):
+        prix = [(prevu[(nom, f)], i) for i, f in enumerate(fournisseurs) if (nom, f) in prevu]
+        return min(prix)[1]
+
+    comparables.sort(key=lambda kv: gagnant(kv[0]))
+    i = rm + 1
+    for nom, p in comparables:
+        rc = rang_comp[nom]
+        d1, d2 = rangs[nom]
+        prix = f"'Comparatif'!${a}${rc}:${b}${rc}"
+        wm.cell(i, 1, f"=IFERROR(INDEX('Comparatif'!${a}${rang_titres}:${b}${rang_titres},MATCH(MIN({prix}),{prix},0)),\"\")")
+        wm.cell(i, 2, p["famille"])
+        wm.cell(i, 3, nom)
+
+        def detail(col):
+            return f"=IFERROR(INDEX('Détail'!${col}${d1}:${col}${d2},MATCH($A{i},'Détail'!$C${d1}:$C${d2},0)),\"\")"
+
+        wm.cell(i, 4, detail("D"))
+        wm.cell(i, 5, detail("E"))
+        wm.cell(i, 6, detail("T"))
+        wm.cell(i, 7, detail("K")).number_format = "0.000"
+        wm.cell(i, 8, detail("G"))
+        wm.cell(i, 9, f"=MIN({prix})").number_format = "0.00"
+        wm.cell(i, 10, p["unite"])
+        # À égalité, MATCH garde le premier fournisseur : la colonne le dit
+        wm.cell(i, 11, f"=IF('Comparatif'!{L(cm)}{rc}=\"égalité\",\"égalité\",'Comparatif'!{L(cp)}{rc})").number_format = "0%"
+        wm.cell(i, 12, f"='Comparatif'!{L(cs)}{rc}")
+        wm.cell(i, 13, p["note"]).alignment = Alignment(wrap_text=True)
+        i += 1
+    dern_m = i - 1
+    habiller(wm, rm + 1, dern_m, len(titres))
+    for rr in range(rm + 1, dern_m + 1):
+        wm.cell(rr, 1).font = Font(name=POLICE, size=10, bold=True)
+        wm.cell(rr, 9).font = Font(name=POLICE, size=10, bold=True)
+    if dern_m > rm:
+        for f in fournisseurs:
+            wm.conditional_formatting.add(f"A{rm + 1}:A{dern_m}", FormulaRule(
+                formula=[f'$A{rm + 1}="{f}"'], font=Font(bold=True, color=COULEURS[f])))
+        wm.conditional_formatting.add(f"L{rm + 1}:L{dern_m}", FormulaRule(
+            formula=[f'$L{rm + 1}="oui"'], fill=PatternFill("solid", bgColor="D1FAE5")))
+        wm.auto_filter.ref = f"A{rm}:{L(len(titres))}{dern_m}"
+    for k, w in enumerate((20, 18, 34, 10, 42, 28, 10, 11, 12, 9, 11, 9, 46), 1):
+        wm.column_dimensions[L(k)].width = w
+    wm.freeze_panes = wm.cell(rm + 1, 1)
 
     # ---------- Cadencier contre facture ----------
     wf = wb.create_sheet("Cadencier contre facture")
@@ -390,6 +462,8 @@ def main():
                   FormulaRule=FormulaRule, L=L)
     comp = dict(premiere=premiere, dern=dern, moins_cher=L(cm)) if dern >= premiere else None
     nb_merc, nb_cad = ajouter_onglets(wb, ICI, config, recent, produits, outils, comp)
+    # Meilleurs prix juste après le Comparatif, qu'il résume
+    wb.move_sheet("Meilleurs prix", wb.sheetnames.index("Comparatif") + 1 - wb.sheetnames.index("Meilleurs prix"))
 
     # ---------- Lisez-moi ----------
     wl = wb.create_sheet("Lisez-moi", 0)
@@ -400,6 +474,7 @@ def main():
     lignes = [
         ("But", "Comparer les prix des fournisseurs à partir de leurs cadenciers" + (", contrôlés sur les factures." if factures else ". Aucune facture n'a servi au contrôle.")),
         ("Comparatif", "Un produit par ligne, un fournisseur par colonne. Le prix le plus bas ressort en vert."),
+        ("Meilleurs prix", "Pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son libellé, son conditionnement et son prix, rangés par fournisseur : ce qu'il vaut mieux acheter chez chacun. À relire avec la colonne Résultat solide. « égalité » : un autre fournisseur fait le même prix."),
         ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé et le verdict du comparatif."),
         ("Cadencier de commande", "Ce que le client achète : consommation par semaine estimée sur les factures, jours de livraison, stock et quantité à commander pour tenir jusqu'à la livraison suivante, arrondie au colis. Les cases en bleu se corrigent à la main : colisage, consommation, livraisons, délai, sécurité, stock et sa date. Changer la date quand on recompte : sinon un nouveau stock est daté du jour où Claude le reprend. Ne pas toucher la dernière colonne, cachée, qui sert à repérer ce qui a été changé."),
         ("Détail", "D'où vient chaque prix : libellé, date, quantité, facture. Les prix en bleu se corrigent à la main, le reste suit."),
