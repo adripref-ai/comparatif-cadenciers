@@ -141,8 +141,11 @@ def main():
             f = factures.get((a["fournisseur"], cle_ref(a["ref"])))
             # Une facture confirme l'unité si son prix hors promo reste proche du cadencier. Sinon elle
             # est sans doute dans une autre unité (un carton pour une bouteille) : son prix n'est pas retenu.
-            confirme = bool(f) and unite_confirmee(t["prix"], f["prix_hors_promo"])
-            facture_ecartee = bool(f) and bool(f["prix_hors_promo"]) and not confirme
+            # Le prix facturé est d'abord ramené à l'unité du cadencier (15,763 €/kg pour un demi-pain de 1,4 kg)
+            hp = (float(f["prix_hors_promo"]) * float(f.get("facteur") or 1)
+                  if f and f["prix_hors_promo"] not in ("", None) else None)
+            confirme = bool(f) and unite_confirmee(t["prix"], hp)
+            facture_ecartee = bool(f) and hp is not None and not confirme
             # Comparer à l'unité vendue (qte_forcee = 1) quand seule la quantité manquait ne déduit rien
             quantite_seule = a["qte_forcee"] == 1 and t["note"].startswith("quantité absente")
             doute = t["confiance"] in ("à vérifier", "si facture") and not confirme and not quantite_seule
@@ -156,7 +159,7 @@ def main():
             wd.cell(r, 7, t["unite_prix"].replace("€/", ""))
             wd.cell(r, 8, jour(t["date_tarif"])).font = Font(color="0000FF")
             if confirme:
-                wd.cell(r, 9, float(f["prix_hors_promo"])).font = Font(color="0000FF")
+                wd.cell(r, 9, round(hp, 4)).font = Font(color="0000FF")
                 wd.cell(r, 10, jour(f["date_hors_promo"])).font = Font(color="0000FF")
             wd.cell(r, 11, f'=IF(AND(I{r}<>"",J{r}>H{r}),I{r},F{r})')
             wd.cell(r, 12, qte).font = Font(color="0000FF")
@@ -166,6 +169,9 @@ def main():
             wd.cell(r, 15, f'=IF(AND(I{r}<>"",J{r}>H{r}),"facture","cadencier")')
             wd.cell(r, 16, "à vérifier" if doute else "vu sur facture" if confirme else "lu sur le document")
             notes = [t["note"]] if doute and t["note"] else []
+            if confirme and float(f.get("facteur") or 1) != 1:
+                notes.append(f"facturé {float(f['prix_hors_promo']):.3f} €/{f['unite_facture']}, ".replace(".", ",")
+                             + f"soit {hp:.3f} €".replace(".", ",") + f"/{t['unite_prix'].replace('€/', '')}")
             if facture_ecartee:
                 notes.append(f"facturé {float(f['prix_hors_promo']):.3f} le {jour(f['date_hors_promo']):%d/%m/%Y}, "
                              "trop loin du cadencier : autre unité ? prix non retenu")
@@ -174,7 +180,7 @@ def main():
             # Une offre est valable jusqu'à son dernier jour inclus
             wd.cell(r, 19, f'=IF(AND(R{r}<>"",O{r}="cadencier",R{r}<TODAY()),"expirée","")')
             wd.cell(r, 20, t.get("conditionnement", ""))
-            retenu = float(f["prix_hors_promo"]) if confirme and f["date_hors_promo"] > t["date_tarif"] else float(t["prix"])
+            retenu = hp if confirme and f["date_hors_promo"] > t["date_tarif"] else float(t["prix"])
             prevu[(nom, a["fournisseur"])] = round(retenu / qte, 4)
             cellule[(nom, a["fournisseur"])] = r
             r += 1
@@ -367,25 +373,32 @@ def main():
     # ---------- Mercuriale contre facture ----------
     wf = wb.create_sheet("Mercuriale contre facture")
     titres = ["Fournisseur", "Réf.", "Libellé", "Date du cadencier", "Prix cadencier", "Date de la facture",
-              "Prix facturé", "Écart %", "Promo", "Nombre d'achats"]
+              "Prix facturé", "Écart %", "Promo", "Nombre d'achats", "Unité", "Note"]
     entete(wf, 1, titres)
     controle = sorted(lire("controle_factures.csv") if factures else [], key=lambda x: (x["fournisseur"], -abs(float(x["ecart_pct"]))))
     for i, x in enumerate(controle, 2):
+        # Le prix du cadencier est ramené à l'unité de la facture, pour comparer ce qui est comparable
+        ramene = float(x.get("prix_cadencier_ramene") or x["prix_cadencier"])
+        unite_cad = x.get("unite_cadencier", "")
         wf.cell(i, 1, x["fournisseur"])
         wf.cell(i, 2, x["ref"])
         wf.cell(i, 3, x["libelle"])
         wf.cell(i, 4, jour(x["date_tarif"])).number_format = "dd/mm/yyyy"
-        wf.cell(i, 5, float(x["prix_cadencier"])).number_format = "0.000"
+        wf.cell(i, 5, ramene).number_format = "0.000"
         wf.cell(i, 6, jour(x["date_facture"])).number_format = "dd/mm/yyyy"
         wf.cell(i, 7, float(x["prix_facture"])).number_format = "0.000"
         wf.cell(i, 8, f"=(G{i}-E{i})/E{i}").number_format = "+0.0%;-0.0%;0.0%"
         wf.cell(i, 9, "oui" if x["promo"] == "1" else "")
         wf.cell(i, 10, int(x["nb_achats"]))
+        wf.cell(i, 11, x.get("unite_facture") or unite_cad)
+        if float(x.get("facteur") or 1) != 1:
+            wf.cell(i, 12, f"cadencier : {float(x['prix_cadencier']):.3f} €".replace(".", ",")
+                           + f" les {unite_cad}, ramené à 1 {x['unite_facture']}")
     habiller(wf, 2, len(controle) + 1, len(titres))
-    for i, w in enumerate((21, 9, 44, 11, 10, 11, 10, 9, 7, 9), 1):
+    for i, w in enumerate((21, 9, 44, 11, 10, 11, 10, 9, 7, 9, 9, 44), 1):
         wf.column_dimensions[L(i)].width = w
     wf.freeze_panes = "A2"
-    wf.auto_filter.ref = f"A1:J{len(controle) + 1}"
+    wf.auto_filter.ref = f"A1:{L(len(titres))}{len(controle) + 1}"
 
     # ---------- Évolutions entre deux cadenciers d'un même fournisseur ----------
     we = wb.create_sheet("Évolutions")
@@ -465,15 +478,15 @@ def main():
         ("But", "Comparer les prix des fournisseurs à partir de leurs cadenciers" + (", contrôlés sur les factures." if factures else ". Aucune facture n'a servi au contrôle.")),
         ("Comparatif", "Un produit par ligne, un fournisseur par colonne. Le prix le plus bas ressort en vert."),
         ("Meilleurs prix", "Pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son libellé, son conditionnement et son prix, rangés par fournisseur : ce qu'il vaut mieux acheter chez chacun. À relire avec la colonne Résultat solide. « égalité » : un autre fournisseur fait le même prix."),
-        ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé et le verdict du comparatif."),
+        ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé (ramené à l'unité de prix du tarif) et le verdict du comparatif."),
         ("Détail", "D'où vient chaque prix : libellé, date, quantité, facture. Les prix en bleu se corrigent à la main, le reste suit."),
-        ("Mercuriale contre facture", "Prix de la mercuriale (le tarif du fournisseur) face au dernier prix payé, pour chaque référence retrouvée sur une facture."),
+        ("Mercuriale contre facture", "Prix de la mercuriale (le tarif du fournisseur) face au dernier prix payé, pour chaque référence retrouvée sur une facture. Quand la facture compte dans une autre unité (au kg pour une pièce de 1,4 kg, à la brique pour un pack de 6), le tarif est ramené à l'unité facturée : la colonne Note le dit."),
         ("Évolutions", "Prix qui ont changé entre deux cadenciers d'un même fournisseur."),
         ("Sans équivalent", "Références lues mais comparées à rien, faute de produit équivalent chez un autre fournisseur."),
         ("Fond jaune", "« Mois entre les prix » supérieur à 3 : les prix comparés n'ont pas le même âge, le résultat est indicatif. « Prix à vérifier » : unité non confirmée par une facture. « Offres expirées » : prix lu sur une offre dont la fin de validité est passée."),
         ("Fond orange", "Écart supérieur à 50 % : souvent une erreur d'unité ou deux produits différents. À contrôler avant de s'y fier."),
         ("Résultat solide", "Prix à 3 mois d'écart au plus, aucune offre expirée, aucune unité à vérifier. Mêmes règles que la page interactive."),
-        ("Prix retenu", f"Le prix du cadencier, ou celui de la dernière facture hors promotion si elle est plus récente et à moins de {SEUIL_UNITE:.0%} du cadencier. Plus loin, la facture est sans doute dans une autre unité : son prix n'est pas retenu et la note de lecture le signale."),
+        ("Prix retenu", f"Le prix du cadencier, ou celui de la dernière facture hors promotion si elle est plus récente et à moins de {SEUIL_UNITE:.0%} du cadencier. Une facture au kg, au litre ou à l'unité d'un lot est d'abord ramenée à l'unité du cadencier. Plus loin, la facture est sans doute dans une autre unité : son prix n'est pas retenu et la note de lecture le signale."),
         ("Non comparable", "Produit affiché pour mémoire, jamais compté dans le bilan."),
         ("Tableur", "Ce classeur s'ouvre dans Excel, LibreOffice ou Google Sheets. Pour Google Sheets : dans Google Drive, Nouveau, Importer un fichier, l'ouvrir, puis Fichier, Enregistrer au format Google Sheets. Pour une mise à jour, dans la feuille Google : Fichier, Importer, Remplacer la feuille de calcul, ce qui garde la même adresse. Une correction faite à la main dans le classeur est perdue à la mise à jour : la signaler à Claude pour qu'il la reporte dans ses fichiers."),
         ("Limites", "Les correspondances entre produits ont été proposées par Claude et restent à valider. Quand un document ne porte pas de date, c'est celle du fichier qui est utilisée. Ce sont des prix HT, hors franco, remises de fin d'année et frais de livraison."),

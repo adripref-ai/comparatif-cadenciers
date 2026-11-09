@@ -111,7 +111,8 @@ def main():
     factures = [dict(f=x["Fournisseur"], lib=x["Libellé"], cad=x["Prix cadencier"], dcad=jour(x["Date du cadencier"]),
                      fac=x["Prix facturé"], dfac=jour(x["Date de la facture"]),
                      ecart=(x["Prix facturé"] - x["Prix cadencier"]) / x["Prix cadencier"],
-                     promo=x["Promo"] == "oui", n=x["Nombre d'achats"]) for x in table(wb["Mercuriale contre facture"], 1)]
+                     promo=x["Promo"] == "oui", n=x["Nombre d'achats"], note=x.get("Note") or "")
+                for x in table(wb["Mercuriale contre facture"], 1)]
     factures.sort(key=lambda x: -abs(x["ecart"]))
     evolutions = [dict(f=x["Fournisseur"], lib=x["Libellé"], avant=x["Ancien prix"], davant=jour(x["Ancien cadencier"]),
                        apres=x["Nouveau prix"], dapres=jour(x["Nouveau cadencier"]),

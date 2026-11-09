@@ -8,7 +8,7 @@ import csv
 from collections import defaultdict
 from pathlib import Path
 
-from lecteurs import cle_ref
+from lecteurs import cle_ref, facteur_facture
 
 # Fonctions de tableur reconnues à la fois par Excel, LibreOffice et Google Sheets.
 # Le classeur ne doit utiliser qu'elles, pour s'ouvrir chez un client qui n'a pas Excel.
@@ -44,7 +44,8 @@ def derniers_achats(achats):
         lignes.sort(key=lambda a: a["date_livraison"])
         # Le dernier prix hors promotion, s'il existe, est celui qu'on paiera à la prochaine commande
         normal = [a for a in lignes if str(a.get("promo", "0")) in ("0", "")] or lignes
-        out[cle] = dict(dernier_prix=float(normal[-1]["prix"]), date_dernier=lignes[-1]["date_livraison"], nb=len(lignes))
+        out[cle] = dict(dernier_prix=float(normal[-1]["prix"]), unite=normal[-1].get("unite", ""),
+                        date_dernier=lignes[-1]["date_livraison"], nb=len(lignes))
     return out
 
 
@@ -88,12 +89,14 @@ def ajouter_onglets(wb, ici, recent, produits, outils, comparatif):
     lignes.sort(key=lambda x: x[:5])
     for r, (_, fam, nom, four, _lib, cle, t) in enumerate(lignes, 2):
         c = payes.get(cle)
+        # Dernier prix payé ramené à l'unité de prix du tarif : 15,763 €/kg devient 22,068 € le demi-pain de 1,4 kg
+        paye = round(c["dernier_prix"] * facteur_facture(t, c["unite"]), 4) if c else None
         valeurs = [fam, "" if nom == "~" else nom, four, t["ref"], t["libelle"], t.get("marque", ""), t["conditionnement"],
                    float(t["prix"]), t["unite_prix"].replace("€/", ""),
                    float(t["prix_unitaire"]) if t["prix_unitaire"] else None, t["unite"],
                    jour(t["date_tarif"]), jour(t["fin_validite"]),
                    f'=IF(AND(M{r}<>"",M{r}<TODAY()),"expirée","")',
-                   c["dernier_prix"] if c else None, jour(c["date_dernier"]) if c else None, c["nb"] if c else None,
+                   paye, jour(c["date_dernier"]) if c else None, c["nb"] if c else None,
                    verdict(r)]
         for k, v in enumerate(valeurs, 1):
             wm.cell(r, k, v)

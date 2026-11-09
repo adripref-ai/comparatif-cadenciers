@@ -82,6 +82,36 @@ def unite_confirmee(prix_cadencier, prix_facture):
     return prix_facture not in (None, "") and abs(float(prix_facture) - float(prix_cadencier)) <= SEUIL_UNITE * float(prix_cadencier)
 
 
+# Unités de facture qui désignent un colis entier, et unités de mesure, pour ramener une facture au cadencier
+UNITES_COLIS = {"CO", "COL", "COLIS", "CAR", "CARTON", "CRT", "CT", "CS", "CAISSE", "LOT", "PACK", "FARDEAU", "FDO"}
+UNITES_MESURE = {"KG": "kg", "KGS": "kg", "KILO": "kg", "L": "L", "LT": "L", "LTR": "L", "LITRE": "L"}
+MOT_MESURE = re.compile(r"(kg|k|g|gr|grammes?|kilogrammes?|l|litres?|cl|ml|centilitres?|millilitres?)\b", re.I)
+
+
+def facteur_facture(tarif, unite_facture):
+    """Nombre d'unités facturées dans une unité de prix du cadencier. Le prix facturé multiplié par ce facteur
+    se lit dans l'unité du cadencier. Exemples : 19,46 € le demi-pain de 1,4 kg facturé 15,763 €/kg (facteur
+    1,4) ; 6,444 € les 6 bricks facturé 1,074 € la brique (facteur 6). Sans indice sûr, le facteur vaut 1."""
+    u = (unite_facture or "").strip().upper().rstrip(".")
+    if not u:
+        return 1
+    mesure = UNITES_MESURE.get(u)
+    if mesure:
+        try:
+            qte = float(tarif["qte"])
+        except (TypeError, ValueError):
+            return 1
+        # Facture au kg ou au litre : on la compare au prix du cadencier ramené au kg ou au litre
+        return qte if qte > 0 and tarif["unite"] == mesure else 1
+    if u in UNITES_COLIS:
+        return 1
+    # Cadencier vendu par lot de N (« 6 Bricks », « 8 Poches ») et facture à l'unité
+    m = re.match(r"(\d+)\s+(\S+)", tarif["unite_prix"].replace("€/", "").strip())
+    if m and int(m.group(1)) > 1 and not MOT_MESURE.fullmatch(m.group(2)):
+        return int(m.group(1))
+    return 1
+
+
 NB = r"(\d+(?:[.,]\d+)?)"
 FACTEUR = {"kg": (1, "kg"), "k": (1, "kg"), "g": (0.001, "kg"), "gr": (0.001, "kg"),
            "l": (1, "L"), "lit": (1, "L"), "litre": (1, "L"), "litres": (1, "L"),

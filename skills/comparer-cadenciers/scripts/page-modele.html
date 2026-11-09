@@ -304,7 +304,7 @@ function dessinerFactures() {
   $('ftab').innerHTML = l.map(x => {
     const cls = Math.abs(x.ecart) < .005 ? 'neutre' : x.ecart < 0 ? 'ok' : 'bad';
     const signe = x.ecart > 0 ? '+' : '';
-    return `<tr><td><span class="point" style="${couleur(x.f)}"></span>${esc(x.f)}</td><td>${esc(x.lib)}</td>
+    return `<tr><td><span class="point" style="${couleur(x.f)}"></span>${esc(x.f)}</td><td>${esc(x.lib)}${x.note ? `<br><small>${esc(x.note)}</small>` : ''}</td>
       <td class="r">${eur(x.cad, 3)}</td><td>${jour(x.dcad)}</td><td class="r">${eur(x.fac, 3)}</td><td>${jour(x.dfac)}</td>
       <td class="r"><span class="tag ${cls}">${signe}${eur(x.ecart * 100, 1)} %</span>${x.promo ? ' <span class="tag neutre">promo</span>' : ''}</td><td>${x.n}</td></tr>`;
   }).join('') || '<tr><td colspan="8">Aucune facture retrouvée pour ce choix.</td></tr>';

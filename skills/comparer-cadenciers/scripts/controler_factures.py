@@ -19,7 +19,7 @@ sys.dont_write_bytecode = True
 
 import fitz
 
-from lecteurs import cle_ref, lignes_pdf, nombre
+from lecteurs import cle_ref, facteur_facture, lignes_pdf, nombre
 
 
 CHAMPS_ACHATS = ["fournisseur", "ref", "libelle", "date_livraison", "qte", "unite", "colisage", "prix", "promo", "facture"]
@@ -133,7 +133,7 @@ def main():
         compte[four] += 1
         for x in lignes:
             ref, lib, prix, promo, qte, livraison, unite, colisage = (tuple(x) + (None,) * 4)[:8]
-            achats[(four, cle_ref(ref))].append((quand, prix, promo, p.name))
+            achats[(four, cle_ref(ref))].append((quand, prix, promo, p.name, unite or ""))
             releve.append(dict(fournisseur=four, ref=ref, libelle=lib, date_livraison=livraison or quand, qte=qte if qte is not None else "",
                                unite=unite or "", colisage=colisage or "", prix=prix, promo=int(bool(promo)), facture=p.name))
 
@@ -151,16 +151,23 @@ def main():
         if not lignes:
             continue
         # Deux prix le même jour : on garde le plus haut, pour ne pas embellir le résultat
-        quand, prix, promo, fichier = max(lignes, key=lambda x: x[:2])
+        quand, prix, promo, fichier, unite = max(lignes, key=lambda x: x[:2])
         cad = float(t["prix"])
+        # Facture et cadencier peuvent compter dans des unités différentes (le kg contre la pièce de 1,4 kg,
+        # la brique contre le pack de 6) : l'écart se calcule sur le cadencier ramené à l'unité facturée.
+        facteur = facteur_facture(t, unite)
+        ramene = round(cad / facteur, 4)
         normaux = [x for x in lignes if not x[2]]
         hp_date, hp_prix = max(normaux, key=lambda x: x[:2])[:2] if normaux else ("", "")
         sortie.append(dict(fournisseur=four, ref=ref, libelle=t["libelle"], date_tarif=t["date_tarif"],
-                           prix_cadencier=cad, date_facture=quand, prix_facture=prix,
-                           ecart_pct=round((prix - cad) / cad * 100, 1), promo=int(promo),
+                           prix_cadencier=cad, unite_cadencier=t["unite_prix"].replace("€/", ""),
+                           unite_facture=unite, facteur=facteur, prix_cadencier_ramene=ramene,
+                           date_facture=quand, prix_facture=prix,
+                           ecart_pct=round((prix - ramene) / ramene * 100, 1), promo=int(promo),
                            date_hors_promo=hp_date, prix_hors_promo=hp_prix, nb_achats=len(lignes), facture=fichier))
     sortie.sort(key=lambda s: (s["fournisseur"], -abs(s["ecart_pct"])))
-    champs = ["fournisseur", "ref", "libelle", "date_tarif", "prix_cadencier", "date_facture", "prix_facture",
+    champs = ["fournisseur", "ref", "libelle", "date_tarif", "prix_cadencier", "unite_cadencier", "unite_facture",
+              "facteur", "prix_cadencier_ramene", "date_facture", "prix_facture",
               "ecart_pct", "promo", "date_hors_promo", "prix_hors_promo", "nb_achats", "facture"]
     with open(ICI / "controle_factures.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, champs)
