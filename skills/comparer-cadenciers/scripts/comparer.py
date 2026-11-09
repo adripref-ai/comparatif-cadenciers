@@ -80,6 +80,12 @@ def main():
             recent[cle] = t
     factures = {}
     if (ICI / "controle_factures.csv").exists():
+        with open(ICI / "controle_factures.csv", encoding="utf-8-sig") as f:
+            colonnes = next(csv.reader(f), [])
+        # Une version précédente ne ramenait pas la facture à l'unité du cadencier : le classeur se contredirait
+        if "facteur_hors_promo" not in colonnes:
+            sys.exit("controle_factures.csv vient d'une version précédente du plugin : "
+                     "relancer controler_factures.py, puis comparer.py.")
         factures = {(x["fournisseur"], cle_ref(x["ref"])): x for x in lire("controle_factures.csv")}
 
     produits = OrderedDict()
@@ -142,7 +148,7 @@ def main():
             # Une facture confirme l'unité si son prix hors promo reste proche du cadencier. Sinon elle
             # est sans doute dans une autre unité (un carton pour une bouteille) : son prix n'est pas retenu.
             # Le prix facturé est d'abord ramené à l'unité du cadencier (15,763 €/kg pour un demi-pain de 1,4 kg)
-            hp = (float(f["prix_hors_promo"]) * float(f.get("facteur") or 1)
+            hp = (float(f["prix_hors_promo"]) * float(f["facteur_hors_promo"] or 1)
                   if f and f["prix_hors_promo"] not in ("", None) else None)
             confirme = bool(f) and unite_confirmee(t["prix"], hp)
             facture_ecartee = bool(f) and hp is not None and not confirme
@@ -169,8 +175,8 @@ def main():
             wd.cell(r, 15, f'=IF(AND(I{r}<>"",J{r}>H{r}),"facture","cadencier")')
             wd.cell(r, 16, "à vérifier" if doute else "vu sur facture" if confirme else "lu sur le document")
             notes = [t["note"]] if doute and t["note"] else []
-            if confirme and float(f.get("facteur") or 1) != 1:
-                notes.append(f"facturé {float(f['prix_hors_promo']):.3f} €/{f['unite_facture']}, ".replace(".", ",")
+            if confirme and float(f["facteur_hors_promo"] or 1) != 1:
+                notes.append(f"facturé {float(f['prix_hors_promo']):.3f} €/{f['unite_hors_promo']}, ".replace(".", ",")
                              + f"soit {hp:.3f} €".replace(".", ",") + f"/{t['unite_prix'].replace('€/', '')}")
             if facture_ecartee:
                 notes.append(f"facturé {float(f['prix_hors_promo']):.3f} le {jour(f['date_hors_promo']):%d/%m/%Y}, "

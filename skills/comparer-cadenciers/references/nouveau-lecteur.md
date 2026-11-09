@@ -51,7 +51,13 @@ Marquer « à vérifier » toute unité supposée : prix peut-être à la boutei
 
 ## 3. Facture d'un format inconnu
 
-Ajouter à `lecteurs_client.py` une fonction qui prend un chemin et renvoie `None` si la facture n'est pas de ce fournisseur, sinon `(fournisseur, "AAAA-MM-JJ", [(ref, libellé, prix, promo, qte, date_livraison, unite, colisage), ...])`. Les quatre derniers champs sont facultatifs : `qte` est la quantité achetée dans l'unité du prix, `date_livraison` la date de la livraison quand une facture en regroupe plusieurs, `colisage` le nombre d'unités par colis. Ignorer les avoirs. Elle reçoit tous les fichiers du dossier des factures, PDF ou non (CSV, Excel, image) : renvoyer `None` pour ceux qu'elle ne sait pas lire.
+Ajouter à `lecteurs_client.py` une fonction qui prend un chemin et renvoie `None` si la facture n'est pas de ce fournisseur, sinon `(fournisseur, "AAAA-MM-JJ", [(ref, libellé, prix, promo, qte, date_livraison, unite, colisage), ...])`. Les quatre derniers champs sont facultatifs : `qte` est la quantité achetée dans l'unité du prix, `date_livraison` la date de la livraison quand une facture en regroupe plusieurs, `colisage` le nombre d'unités par colis. Ignorer les avoirs.
+
+`unite` est l'unité du prix facturé, recopiée de la facture. Elle sert à ramener la facture à l'unité du cadencier, et seulement dans deux cas :
+- au kg ou au litre (`KG`, `KILOS`, `KG NET`, `L`, `LT`, `LITRES`…), face à un tarif dont l'unité de comparaison est le kg ou le litre : 15,763 €/kg contre 19,46 € le demi-pain de 1,4 kg ;
+- à la pièce d'un tarif vendu par lot (« €/6 Bricks ») : l'unité doit être `PCE`, `PIECE` ou nommer le même objet que le lot (`BRIC` pour Bricks).
+
+Toute autre unité (`COL`, `CTN`, `UC`, gramme, centilitre, abréviation inconnue) ne convertit rien. Une unité vide non plus. Elle reçoit tous les fichiers du dossier des factures, PDF ou non (CSV, Excel, image) : renvoyer `None` pour ceux qu'elle ne sait pas lire.
 
 ```python
 FACTURES = [lire_facture_mon_fournisseur]

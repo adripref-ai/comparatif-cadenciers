@@ -40,7 +40,7 @@ Lancer `scripts/controler_factures.py <dossier>`, puis lire `controle_factures.c
 - un prix hors promotion à moins de 30 % du cadencier confirme son unité. Un petit écart signale un prix brut, un cadencier périmé ou une promotion ;
 - au-delà de 30 %, la facture est sans doute dans une autre unité (un carton pour une bouteille) : son prix n'est pas retenu, la ligne reste « à vérifier » et la note de lecture le dit.
 
-Quand la facture dit qu'elle compte au kg ou au litre (le kg pour un demi-pain de 1,4 kg), ou à l'unité d'un lot vendu par N au cadencier (la brique pour un pack de 6), le prix facturé est d'abord ramené à l'unité du cadencier. Les colonnes `facteur` et `prix_cadencier_ramene` le montrent. Sans indice sûr, rien n'est converti.
+Quand la facture dit qu'elle compte au kg ou au litre (le kg pour un demi-pain de 1,4 kg), ou à l'unité d'un lot vendu par N au cadencier (la brique pour un pack de 6), le prix facturé est d'abord ramené à l'unité du cadencier. Les colonnes `facteur`, `prix_cadencier_ramene` et `facteur_hors_promo` le montrent. Sans unité reconnue (voir `references/nouveau-lecteur.md`), rien n'est converti. `comparer.py` refuse un `controle_factures.csv` d'une version précédente : relancer alors cette étape.
 
 Le script écrit aussi `achats.csv` : chaque ligne achetée, avec sa quantité et sa date de livraison. Il donne le dernier prix payé de la mercuriale.
 

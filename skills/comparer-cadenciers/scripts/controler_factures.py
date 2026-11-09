@@ -157,18 +157,22 @@ def main():
         # la brique contre le pack de 6) : l'écart se calcule sur le cadencier ramené à l'unité facturée.
         facteur = facteur_facture(t, unite)
         ramene = round(cad / facteur, 4)
+        # Le dernier prix hors promo peut venir d'une autre ligne, dans une autre unité : il a son propre facteur
         normaux = [x for x in lignes if not x[2]]
-        hp_date, hp_prix = max(normaux, key=lambda x: x[:2])[:2] if normaux else ("", "")
+        hp = max(normaux, key=lambda x: x[:2]) if normaux else None
+        hp_date, hp_prix, hp_unite = (hp[0], hp[1], hp[4]) if hp else ("", "", "")
         sortie.append(dict(fournisseur=four, ref=ref, libelle=t["libelle"], date_tarif=t["date_tarif"],
                            prix_cadencier=cad, unite_cadencier=t["unite_prix"].replace("€/", ""),
                            unite_facture=unite, facteur=facteur, prix_cadencier_ramene=ramene,
                            date_facture=quand, prix_facture=prix,
                            ecart_pct=round((prix - ramene) / ramene * 100, 1), promo=int(promo),
-                           date_hors_promo=hp_date, prix_hors_promo=hp_prix, nb_achats=len(lignes), facture=fichier))
+                           date_hors_promo=hp_date, prix_hors_promo=hp_prix, unite_hors_promo=hp_unite,
+                           facteur_hors_promo=facteur_facture(t, hp_unite) if hp else "",
+                           nb_achats=len(lignes), facture=fichier))
     sortie.sort(key=lambda s: (s["fournisseur"], -abs(s["ecart_pct"])))
     champs = ["fournisseur", "ref", "libelle", "date_tarif", "prix_cadencier", "unite_cadencier", "unite_facture",
-              "facteur", "prix_cadencier_ramene", "date_facture", "prix_facture",
-              "ecart_pct", "promo", "date_hors_promo", "prix_hors_promo", "nb_achats", "facture"]
+              "facteur", "prix_cadencier_ramene", "date_facture", "prix_facture", "ecart_pct", "promo",
+              "date_hors_promo", "prix_hors_promo", "unite_hors_promo", "facteur_hors_promo", "nb_achats", "facture"]
     with open(ICI / "controle_factures.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, champs)
         w.writeheader()
