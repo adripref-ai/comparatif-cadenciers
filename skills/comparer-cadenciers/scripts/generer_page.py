@@ -15,6 +15,10 @@ from pathlib import Path
 
 import openpyxl
 
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).parent))
+from validations import CHOIX, DECISIONS, LIBELLE_TYPE, ONGLET, decision_type  # noqa: E402
+
 ICI = Path(__file__).parent
 # Clair, sombre. Mêmes teintes que dans le classeur.
 COULEURS = {"Sysco": ("#1D5FA6", "#7DB8F0"), "Pro à Pro": ("#1E7A3C", "#6FD18E"), "Episaveurs": ("#B45309", "#F0A95E"),
@@ -35,11 +39,13 @@ def arrondi(x, n):
     return float(Decimal(f"{x:.15g}").quantize(Decimal(1).scaleb(-n), rounding=ROUND_HALF_UP))
 
 
-def table(ws, ligne_titres):
-    """Renvoie les lignes d'une feuille sous forme de dictionnaires, clés = titres de colonnes."""
+def table(ws, ligne_titres, cle=None):
+    """Renvoie les lignes d'une feuille sous forme de dictionnaires, clés = titres de colonnes.
+    Une ligne compte si sa première colonne, ou la colonne cle, est remplie."""
     titres = [c.value for c in ws[ligne_titres]]
+    i = titres.index(cle) if cle else 0
     for r in ws.iter_rows(min_row=ligne_titres + 1, values_only=True):
-        if r[0] is not None:
+        if r[i] is not None:
             yield dict(zip(titres, r))
 
 
@@ -86,9 +92,28 @@ def main():
             expire=not par_facture and isinstance(d.get("Fin de validité"), datetime)
             and d["Fin de validité"].date() < date.today()))
 
+    # Le type du Comparatif est une formule qui suit la décision du client : on refait le calcul ici
+    validation = {}
+    if ONGLET in wb.sheetnames:
+        wv = wb[ONGLET]
+        rv = next(r for r in range(1, 30) if wv.cell(r, 2).value == "Produit")
+        for x in table(wv, rv, cle="Produit"):
+            prop = DECISIONS.get(str(x["Proposition de Claude"] or "").strip().lower(), "different")
+            try:
+                dec = decision_type(x["Décision du client"])
+            except ValueError:
+                sys.exit(f"Décision illisible pour {x['Produit']} dans l'onglet {ONGLET} : "
+                         "lancer reprendre_validations.py, qui dira quoi corriger.")
+            validation[x["Produit"]] = dict(proposition=CHOIX[prop], decision=CHOIX[dec] if dec else "",
+                                            type=LIBELLE_TYPE[dec or prop],
+                                            commentaire=x.get("Commentaire du client") or "")
+
     produits = []
     for p in table(wc, rang):
         liste = offres[p["Produit"]]
+        v = validation.get(p["Produit"])
+        if v:
+            p["Type"] = v["type"]
         prix = sorted(o["pu"] for o in liste)
         ecart = pct = None
         if p["Type"] == "non comparable":
@@ -105,6 +130,8 @@ def main():
         produits.append(dict(
             nom=p["Produit"], unite=p["Unité"], famille=p["Famille"], gagnant=gagnant, ecart=ecart, pct=pct,
             mois=mois, doutes=doutes, type=p["Type"], note=p["Remarque"] or "",
+            proposition=v["proposition"] if v else "", decision=v["decision"] if v else "",
+            commentaire=v["commentaire"] if v else "",
             solide=(gagnant not in ("non comparable", "seul") and mois <= 3 and doutes == 0
                     and not any(o["expire"] for o in liste)), offres=liste))
 

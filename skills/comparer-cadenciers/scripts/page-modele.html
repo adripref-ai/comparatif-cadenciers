@@ -123,7 +123,7 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
     <p class="meta" id="meta"></p>
   </header>
 
-  <p class="provisoire" id="prov" hidden>Résultat provisoire : les correspondances entre produits restent à valider.</p>
+  <p class="provisoire" id="prov" hidden><span id="provtxt">Résultat provisoire : les correspondances entre produits restent à valider.</span> <button class="lien" id="provvoir" hidden>Voir la liste</button></p>
 
   <section class="bilan" aria-label="Bilan">
     <div class="bloc">
@@ -139,6 +139,7 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
 
   <div class="onglets" role="tablist" aria-label="Vues">
     <button role="tab" id="o-produits" aria-selected="true" data-v="produits">Produits</button>
+    <button role="tab" id="o-valider" aria-selected="false" data-v="valider">À valider</button>
     <button role="tab" id="o-mercuriale" aria-selected="false" data-v="mercuriale">Mercuriale</button>
     <button role="tab" id="o-factures" aria-selected="false" data-v="factures">Mercuriale contre facture</button>
     <button role="tab" id="o-evolutions" aria-selected="false" data-v="evolutions">Évolutions</button>
@@ -157,6 +158,19 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
       <span class="compte" id="compte"></span>
     </div>
     <div class="liste" id="liste"></div>
+  </section>
+
+  <section class="vue" id="v-valider" hidden>
+    <p class="meta">Les produits que Claude a mis en face. Seule une personne du métier sait s'ils se remplacent : le client tranche dans l'onglet « À valider » du classeur (Excel ou Google Sheets), puis Claude reporte ses choix ici.</p>
+    <div class="outils">
+      <select id="vfil" aria-label="Afficher">
+        <option value="trancher">À trancher</option>
+        <option value="tranche">Déjà tranchés</option>
+        <option value="">Tous</option>
+      </select>
+      <span class="compte" id="vcompte"></span>
+    </div>
+    <div class="liste" id="vliste"></div>
   </section>
 
   <section class="vue" id="v-mercuriale" hidden>
@@ -210,7 +224,14 @@ const ETATS = [
 ];
 
 $('titre').textContent = D.client;
+const aTrancher = p => p.proposition && !p.decision && p.proposition !== 'Même produit';
+const nbTrancher = D.produits.filter(aTrancher).length;
 $('prov').hidden = !D.provisoire;
+if (nbTrancher) {
+  $('provtxt').textContent = `Résultat provisoire : ${nbTrancher} correspondance${nbTrancher > 1 ? 's' : ''} sur ${D.produits.length} reste${nbTrancher > 1 ? 'nt' : ''} à valider avec le client.`;
+  $('provvoir').hidden = false;
+}
+if (!D.produits.some(p => p.proposition)) $('o-valider').hidden = true;
 $('meta').textContent = `${D.produits.length} produits, ${D.fournisseurs.length} fournisseurs. Prix HT ramenés au kg, au litre ou à l'unité indiquée. Touche un produit pour voir d'où viennent ses prix.`;
 
 function dessinerBilan() {
@@ -339,6 +360,31 @@ function dessinerMercuriale() {
   $('mtab').innerHTML = html;
 }
 
+function dessinerValidation() {
+  const fil = $('vfil').value;
+  const l = D.produits.filter(p => p.proposition && (!fil || (fil === 'trancher' ? aTrancher(p) : !!p.decision)));
+  $('vcompte').textContent = `${l.length} produit${l.length > 1 ? 's' : ''} · ${nbTrancher} à trancher · ${D.produits.filter(p => p.decision).length} tranché${D.produits.filter(p => p.decision).length > 1 ? 's' : ''}`;
+  if (!l.length) {
+    $('vliste').innerHTML = `<div class="vide">${fil === 'trancher' ? 'Tout est tranché : le comparatif peut être validé.' : 'Rien à afficher pour ce choix.'}</div>`;
+    return;
+  }
+  $('vliste').innerHTML = l.map(p => {
+    const statut = p.decision
+      ? `<span class="tag ${p.decision === p.proposition ? 'ok' : 'warn'}">Client : ${esc(p.decision)}</span>`
+      : aTrancher(p) ? '<span class="tag warn">À trancher</span>' : '<span class="tag neutre">Pas de doute</span>';
+    const lignes = p.offres.map(o => `<tr><td><span class="point" style="${couleur(o.f)}"></span>${esc(o.f)}</td><td>${esc(o.lib)}<br><small>Réf. ${esc(o.ref)}</small></td></tr>`).join('');
+    return `<details class="p"><summary>
+        <div class="nom"><b>${esc(p.nom)}</b><small>${esc(p.famille)}</small></div>
+        <div class="echelle"><small>${esc(p.note)}</small></div>
+        <div class="verdict"><span class="gain">Claude propose : <strong>${esc(p.proposition)}</strong></span><div class="tags">${statut}</div></div>
+      </summary>
+      <div class="detail">
+        ${p.commentaire ? `<p>Commentaire du client : ${esc(p.commentaire)}</p>` : ''}
+        <div class="defile"><table><thead><tr><th>Fournisseur</th><th>Libellé</th></tr></thead><tbody>${lignes}</tbody></table></div>
+      </div></details>`;
+  }).join('');
+}
+
 function rafraichir() { dessinerBilan(); dessinerListe(); }
 
 document.querySelector('.bilan').addEventListener('click', e => {
@@ -349,7 +395,7 @@ document.querySelector('.bilan').addEventListener('click', e => {
 });
 document.querySelector('.onglets').addEventListener('click', e => { const b = e.target.closest('button'); if (b) montrer(b.dataset.v); });
 function montrer(v) {
-  for (const n of ['produits', 'mercuriale', 'factures', 'evolutions']) {
+  for (const n of ['produits', 'valider', 'mercuriale', 'factures', 'evolutions']) {
     $('v-' + n).hidden = n !== v;
     $('o-' + n).setAttribute('aria-selected', n === v);
   }
@@ -357,6 +403,8 @@ function montrer(v) {
 $('raz').addEventListener('click', () => { filtre.gagnant = filtre.etat = null; $('q').value = ''; $('fam').value = ''; rafraichir(); });
 ['q', 'fam', 'tri'].forEach(i => $(i).addEventListener('input', dessinerListe));
 ['ffo', 'fdiff'].forEach(i => $(i).addEventListener('input', dessinerFactures));
+$('vfil').addEventListener('input', dessinerValidation);
+$('provvoir').addEventListener('click', () => { $('vfil').value = 'trancher'; dessinerValidation(); montrer('valider'); });
 
 $('fam').innerHTML = '<option value="">Toutes les familles</option>' + [...new Set(D.produits.map(p => p.famille))].map(f => `<option>${esc(f)}</option>`).join('');
 $('ffo').innerHTML = '<option value="">Tous les fournisseurs</option>' + [...new Set(D.factures.map(x => x.f))].map(f => `<option>${esc(f)}</option>`).join('');
@@ -364,5 +412,5 @@ const options = (l, tous) => `<option value="">${tous}</option>` + [...new Set(l
 $('mfam').innerHTML = options((D.mercuriale || []).map(x => x.fam), 'Toutes les familles');
 $('mfo').innerHTML = options((D.mercuriale || []).map(x => x.f), 'Tous les fournisseurs');
 ['mq', 'mfam', 'mfo', 'machat'].forEach(i => $(i).addEventListener('input', dessinerMercuriale));
-rafraichir(); dessinerFactures(); dessinerEvolutions(); dessinerMercuriale();
+rafraichir(); dessinerFactures(); dessinerEvolutions(); dessinerMercuriale(); dessinerValidation();
 </script>

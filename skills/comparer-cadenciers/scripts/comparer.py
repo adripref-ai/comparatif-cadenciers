@@ -19,9 +19,11 @@ from openpyxl import Workbook
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter as L
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from lecteurs import SEUIL_UNITE, cle_ref, nombre, unite_confirmee
 from suivi import ajouter_onglets, fonctions_incompatibles
+from validations import CHOIX, LIBELLE_TYPE, ONGLET, etat, lire_decisions
 
 ICI = None
 COULEURS = {"Sysco": "1D5FA6", "Pro à Pro": "1E7A3C", "Episaveurs": "B45309",
@@ -105,8 +107,11 @@ def main():
         except ValueError:
             erreurs.append(f"qte_forcee illisible pour {a['produit']} {cle} : « {a['qte_forcee']} »")
             continue
+        decision, commentaire = etat(a)
         p = produits.setdefault(a["produit"], dict(famille=a["famille"], unite=a["unite"], type=typ,
-                                                   note=a["note"], lignes=[]))
+                                                   note=a["note"], lignes=[], decision=decision,
+                                                   commentaire=commentaire,
+                                                   proposition=TYPES.get((a.get("proposition") or "").strip().lower(), typ)))
         if a["unite"] != p["unite"]:
             erreurs.append(f"Unités mélangées dans {a['produit']} : {a['unite']} pour {a['fournisseur']}, "
                            f"{p['unite']} sur la première ligne")
@@ -119,6 +124,15 @@ def main():
     if erreurs:
         print("\n".join(erreurs))
         sys.exit(1)
+    # Des choix faits par le client dans le classeur seraient perdus en le reconstruisant
+    if SORTIE.exists():
+        dans_classeur = lire_decisions(SORTIE) or {}
+        oublies = [nom for nom, (dec, com) in dans_classeur.items()
+                   if nom in produits and (dec, com) != (produits[nom]["decision"], produits[nom]["commentaire"])]
+        if oublies:
+            sys.exit(f"Le classeur contient des choix du client pas encore reportés ({', '.join(oublies[:8])}"
+                     f"{' ...' if len(oublies) > 8 else ''}) : lancer d'abord reprendre_validations.py, "
+                     "ou supprimer le classeur pour abandonner ces choix.")
     if not produits:
         print("Aucun produit présent chez deux fournisseurs : rien à mettre en face. "
               "Le classeur ne garde que les références lues (onglet Sans équivalent).")
@@ -218,7 +232,7 @@ def main():
     wc["A2"].font = Font(name=POLICE, size=10, color="55606E")
 
     if config.get("provisoire", True):
-        wc["A3"] = "Résultat provisoire : les correspondances entre produits restent à valider."
+        wc["A3"] = "Résultat provisoire : les correspondances entre produits restent à valider (onglet À valider)."
         wc["A3"].font = Font(name=POLICE, size=10, bold=True, color="B3261E")
 
     # Bilan
@@ -240,6 +254,12 @@ def main():
     r = premiere
     familles = list(OrderedDict.fromkeys(p["famille"] for p in produits.values()))
     ordre = sorted(produits.items(), key=lambda kv: (familles.index(kv[1]["famille"]), kv[1]["type"] == "different"))
+    # Onglet À valider : d'abord ce qui reste à trancher, puis ce qui est tranché, puis les produits identiques
+    a_valider = sorted(ordre, key=lambda kv: (2 if kv[1]["type"] == "identique" and not kv[1]["decision"]
+                                              else 1 if kv[1]["decision"] else 0))
+    RV = 6  # ligne des titres de l'onglet À valider
+    rang_val = {nom: RV + 1 + i for i, (nom, _) in enumerate(a_valider)}
+    col_dec = L(3 + n + 3)
     rang_comp = {}
     for nom, p in ordre:
         rang_comp[nom] = r
@@ -251,7 +271,11 @@ def main():
                 c = wc.cell(r, c0 + i, f"='Détail'!M{cellule[(nom, f)]}")
                 c.font = Font(color="008000")
                 c.number_format = "0.00"
-        wc.cell(r, ct, {"identique": "identique", "equivalent": "équivalent", "different": "non comparable"}[p["type"]])
+        # Le choix du client dans l'onglet À valider l'emporte tout de suite : le bilan se recalcule
+        dec = f"'{ONGLET}'!${col_dec}${rang_val[nom]}"
+        wc.cell(r, ct, f'=IF({dec}="{CHOIX["identique"]}","{LIBELLE_TYPE["identique"]}",'
+                       f'IF({dec}="{CHOIX["equivalent"]}","{LIBELLE_TYPE["equivalent"]}",'
+                       f'IF({dec}="{CHOIX["different"]}","{LIBELLE_TYPE["different"]}","{LIBELLE_TYPE[p["type"]]}")))')
         rng = f"{a}{r}:{b}{r}"
         typ = f"{L(ct)}{r}"
         wc.cell(r, cm, f'=IF({typ}="non comparable","non comparable",IF(COUNT({rng})<2,"seul",'
@@ -322,7 +346,7 @@ def main():
                 "son prix. Prix HT, hors franco, remises et frais de livraison.")
     wm["A2"].font = Font(name=POLICE, size=10, color="55606E")
     if config.get("provisoire", True):
-        wm["A3"] = "Résultat provisoire : les correspondances entre produits restent à valider."
+        wm["A3"] = "Résultat provisoire : les correspondances entre produits restent à valider (onglet À valider)."
         wm["A3"].font = Font(name=POLICE, size=10, bold=True, color="B3261E")
     titres = ["Fournisseur", "Famille", "Produit", "Réf.", "Libellé du fournisseur", "Conditionnement", "Prix HT",
               "Unité de prix", "Prix par unité de comparaison", "Unité", "Moins cher que le 2e de", "Résultat solide",
@@ -341,7 +365,10 @@ def main():
         rc = rang_comp[nom]
         d1, d2 = rangs[nom]
         prix = f"'Comparatif'!${a}${rc}:${b}${rc}"
-        wm.cell(i, 1, f"=IFERROR(INDEX('Comparatif'!${a}${rang_titres}:${b}${rang_titres},MATCH(MIN({prix}),{prix},0)),\"\")")
+        # Un produit que le client déclare non comparable sort aussitôt de la liste
+        hors = f"'Comparatif'!${L(ct)}${rc}=\"{LIBELLE_TYPE['different']}\""
+        wm.cell(i, 1, f"=IF({hors},\"{LIBELLE_TYPE['different']}\","
+                      f"IFERROR(INDEX('Comparatif'!${a}${rang_titres}:${b}${rang_titres},MATCH(MIN({prix}),{prix},0)),\"\"))")
         wm.cell(i, 2, p["famille"])
         wm.cell(i, 3, nom)
 
@@ -353,7 +380,7 @@ def main():
         wm.cell(i, 6, detail("T"))
         wm.cell(i, 7, detail("K")).number_format = "0.000"
         wm.cell(i, 8, detail("G"))
-        wm.cell(i, 9, f"=MIN({prix})").number_format = "0.00"
+        wm.cell(i, 9, f"=IF({hors},\"\",MIN({prix}))").number_format = "0.00"
         wm.cell(i, 10, p["unite"])
         # À égalité, MATCH garde le premier fournisseur : la colonne le dit
         wm.cell(i, 11, f"=IF('Comparatif'!{L(cm)}{rc}=\"égalité\",\"égalité\",'Comparatif'!{L(cp)}{rc})").number_format = "0%"
@@ -474,6 +501,77 @@ def main():
     # Meilleurs prix juste après le Comparatif, qu'il résume
     wb.move_sheet("Meilleurs prix", wb.sheetnames.index("Comparatif") + 1 - wb.sheetnames.index("Meilleurs prix"))
 
+    # ---------- À valider : le client tranche chaque correspondance ----------
+    wv = wb.create_sheet(ONGLET, 0)
+    wv["A1"] = f"Correspondances à valider · {client}"
+    wv["A1"].font = Font(name=POLICE, bold=True, size=14)
+    wv["A2"] = ("Pour chaque produit, choisir dans la colonne Décision : « Même produit » ou « Remplaçable en cuisine » "
+                "(on compare les prix), ou « Pas comparable » (affiché pour mémoire, jamais compté). Le Comparatif se met "
+                "à jour tout de suite. Ensuite, dire à Claude que c'est fait : il reporte les choix et met la page à jour.")
+    wv["A2"].font = Font(name=POLICE, size=10, color="55606E")
+    wv["A2"].alignment = Alignment(wrap_text=True, vertical="top")
+    wv.merge_cells(start_row=2, start_column=1, end_row=2, end_column=3 + n + 4)
+    wv.row_dimensions[2].height = 42
+    titres = (["Famille", "Produit", "Unité"] + fournisseurs
+              + ["Ce qui les distingue", "Proposition de Claude", "Décision du client", "Commentaire du client"])
+    entete(wv, RV, titres)
+    for i, f in enumerate(fournisseurs):
+        wv.cell(RV, 4 + i).fill = PatternFill("solid", fgColor=COULEURS[f])
+    cdist, cprop, cdec, ccom = (3 + n + k for k in range(1, 5))
+    for nom, p in a_valider:
+        rv = rang_val[nom]
+        wv.cell(rv, 1, p["famille"])
+        wv.cell(rv, 2, nom).font = Font(bold=True)
+        wv.cell(rv, 3, p["unite"])
+        for a_, t in p["lignes"]:
+            c = wv.cell(rv, 4 + fournisseurs.index(a_["fournisseur"]), f"{t['libelle']} (réf. {t['ref']})")
+            c.alignment = Alignment(wrap_text=True)
+        wv.cell(rv, cdist, p["note"]).alignment = Alignment(wrap_text=True)
+        wv.cell(rv, cprop, CHOIX[p["proposition"]])
+        wv.cell(rv, cdec, p["decision"] or None).font = Font(bold=True)
+        wv.cell(rv, ccom, p["commentaire"] or None).alignment = Alignment(wrap_text=True)
+    dern_v = RV + len(a_valider)
+    # Compteurs : ce qui reste à trancher, hors produits proposés identiques
+    plage_dec, plage_prop = f"{L(cdec)}{RV + 1}:{L(cdec)}{max(dern_v, RV + 1)}", f"{L(cprop)}{RV + 1}:{L(cprop)}{max(dern_v, RV + 1)}"
+    wv["A4"] = "Décisions prises"
+    wv["B4"] = f"=COUNTIF({plage_dec},\"?*\")"
+    wv["A5"] = "Encore à trancher"
+    wv["B5"] = f"=COUNTIFS({plage_dec},\"\",{plage_prop},\"<>{CHOIX['identique']}\")"
+    for c in ("A4", "A5"):
+        wv[c].font = Font(name=POLICE, bold=True, size=10)
+    for c in ("B4", "B5"):
+        wv[c].font = Font(name=POLICE, bold=True, size=12)
+        wv[c].alignment = Alignment(horizontal="left")
+    habiller(wv, RV + 1, dern_v, len(titres))
+    for rr in range(RV + 1, dern_v + 1):
+        for c in [2] + list(range(4, ccom + 1)):
+            wv.cell(rr, c).alignment = Alignment(wrap_text=True, vertical="center")
+        wv.cell(rr, 2).font = Font(name=POLICE, size=10, bold=True)
+        wv.cell(rr, cdec).font = Font(name=POLICE, size=10, bold=True)
+    if dern_v > RV:
+        liste = DataValidation(type="list", formula1='"' + ",".join(CHOIX.values()) + '"', allow_blank=True,
+                               showErrorMessage=True, errorTitle="Choix inconnu",
+                               error="Choisir Même produit, Remplaçable en cuisine ou Pas comparable.",
+                               showInputMessage=True, promptTitle="Décision du client",
+                               prompt="Laisser vide pour garder la proposition de Claude.")
+        wv.add_data_validation(liste)
+        liste.add(plage_dec)
+        # Jaune : à trancher. Vert : tranché comme Claude le proposait. Orange : le client a changé d'avis.
+        d0, p0 = f"${L(cdec)}{RV + 1}", f"${L(cprop)}{RV + 1}"
+        wv.conditional_formatting.add(plage_dec, FormulaRule(
+            formula=[f'AND({d0}="",{p0}<>"{CHOIX["identique"]}")'], fill=PatternFill("solid", bgColor="FEF3C7")))
+        wv.conditional_formatting.add(plage_dec, FormulaRule(
+            formula=[f'AND({d0}<>"",{d0}={p0})'], fill=PatternFill("solid", bgColor="D1FAE5")))
+        wv.conditional_formatting.add(plage_dec, FormulaRule(
+            formula=[f'AND({d0}<>"",{d0}<>{p0})'], fill=PatternFill("solid", bgColor="FED7AA")))
+        wv.auto_filter.ref = f"A{RV}:{L(ccom)}{dern_v}"
+    largeurs = {1: 18, 2: 30, 3: 10, cdist: 40, cprop: 16, cdec: 20, ccom: 30}
+    for i in range(n):
+        largeurs[4 + i] = 30
+    for c, w in largeurs.items():
+        wv.column_dimensions[L(c)].width = w
+    wv.freeze_panes = wv.cell(RV + 1, 3)
+
     # ---------- Lisez-moi ----------
     wl = wb.create_sheet("Lisez-moi", 0)
     wl.column_dimensions["A"].width = 26
@@ -482,6 +580,7 @@ def main():
     wl["A1"].font = Font(name=POLICE, bold=True, size=14)
     lignes = [
         ("But", "Comparer les prix des fournisseurs à partir de leurs cadenciers" + (", contrôlés sur les factures." if factures else ". Aucune facture n'a servi au contrôle.")),
+        ("À valider", "Les correspondances proposées par Claude, une ligne par produit, avec le libellé de chaque fournisseur. Le client choisit dans la colonne Décision : Même produit, Remplaçable en cuisine ou Pas comparable. Le Comparatif et les Meilleurs prix suivent tout de suite. Claude reporte ensuite ces choix dans ses fichiers : sans cela, ils seraient perdus à la prochaine mise à jour."),
         ("Comparatif", "Un produit par ligne, un fournisseur par colonne. Le prix le plus bas ressort en vert."),
         ("Meilleurs prix", "Pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son libellé, son conditionnement et son prix, rangés par fournisseur : ce qu'il vaut mieux acheter chez chacun. À relire avec la colonne Résultat solide. « égalité » : un autre fournisseur fait le même prix."),
         ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé (ramené à l'unité de prix du tarif) et le verdict du comparatif."),
@@ -503,7 +602,8 @@ def main():
         c.font = Font(name=POLICE, size=10)
         c.alignment = Alignment(wrap_text=True, vertical="top")
         wl.cell(i, 1).alignment = Alignment(vertical="top")
-    wb.active = 1
+    # Tant que le comparatif est provisoire, le classeur s'ouvre sur ce qui reste à valider
+    wb.active = wb.sheetnames.index(ONGLET if config.get("provisoire", True) else "Comparatif")
     # Réglages lus dans config.json : la page vérifie qu'ils n'ont pas changé depuis
     wb.properties.keywords = json.dumps({k: config.get(k) for k in CONFIG_UTILE}, ensure_ascii=False)
     hors_liste = fonctions_incompatibles(wb)

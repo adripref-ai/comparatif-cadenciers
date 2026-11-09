@@ -9,7 +9,7 @@ Produire un comparatif de prix fiable à partir de fichiers de tarifs. Répondre
 
 ## Déroulé
 
-L'utilisateur est souvent chez son client, avec lui. Enchaîner les étapes 0 à 5 sans demander de validation intermédiaire, jusqu'à un premier résultat marqué provisoire, puis passer en revue les doutes avec le client et republier. Ne poser une question avant le résultat que si elle bloque vraiment. Dire en une ligne où en est l'analyse à chaque étape.
+L'utilisateur est souvent chez son client, avec lui. Enchaîner les étapes 0 à 6 sans demander de validation intermédiaire, jusqu'à un premier résultat marqué provisoire, puis faire valider les correspondances par le client dans le classeur (étape 7) et republier. Ne poser une question avant le résultat que si elle bloque vraiment. Dire en une ligne où en est l'analyse à chaque étape.
 
 Traiter tous les fichiers fournis, même d'un format inconnu. Un fichier illisible ne doit pas arrêter les autres : le signaler et continuer. Un document sans prix (catalogue, plaquette) va dans `autres/` et se signale au compte rendu, avec le tarif à demander.
 
@@ -56,13 +56,14 @@ Facture d'un format inconnu, PDF ou non : voir `references/nouveau-lecteur.md`. 
 - `unite` : la même sur toutes les lignes d'un produit.
 - `type` : `identique` (même marque, même format), `equivalent` (substituable en cuisine), `different` (affiché mais jamais compté). Les accents sont acceptés.
 - `qte_forcee` : obligatoire si l'unité n'est pas celle du cadencier. Mettre 1 pour comparer à la pièce. `0,75` et `0.75` sont acceptés. Elle ne confirme pas une unité supposée : seule une facture le fait. Seule exception, `1` quand la quantité manquait au cadencier, puisque rien n'est alors déduit.
-- `note` : ce qui distingue les produits (marque, format, pourcentage).
+- `note` : ce qui distingue les produits (marque, format, pourcentage). Le client la lit pour trancher : l'écrire pour lui.
+- `proposition`, `valide`, `commentaire` : remplies par `reprendre_validations.py`, ne pas les écrire à la main.
 
 Commencer par ce que le client achète vraiment, d'après les factures, ou à défaut d'après ses cadenciers personnalisés, plutôt que les tarifs généraux. Dans le doute, choisir `different`. Ne jamais rapprocher un surgelé d'un frais, ni un lyophilisé d'un surgelé.
 
 Ne mettre que les produits présents chez au moins deux fournisseurs, avec une seule référence par fournisseur et par produit. Les autres apparaissent d'eux-mêmes dans l'onglet Sans équivalent du classeur. `type` et `note` se lisent sur la première ligne de chaque produit. Si très peu de produits se recoupent, le dire clairement : c'est un résultat, pas une erreur. Avec aucun produit commun, le classeur est quand même produit, avec l'onglet Sans équivalent.
 
-Continuer sans attendre. Seule une personne du métier sait si deux produits se remplacent : tant qu'elle n'a pas validé les `equivalent` et `different`, annoncer le comparatif comme provisoire. Présenter cette liste à l'étape 6.
+Continuer sans attendre. Seule une personne du métier sait si deux produits se remplacent : tant qu'elle n'a pas validé les `equivalent` et `different`, annoncer le comparatif comme provisoire. Elle tranche à l'étape 6, dans l'onglet À valider du classeur.
 
 ## Étape 3 bis · Préparer la mercuriale
 
@@ -110,9 +111,20 @@ Dire simplement :
 - qui est le moins cher, en rappelant les limites, et que l'onglet Meilleurs prix donne la liste de ce qu'il vaut mieux acheter chez chacun ;
 - combien de résultats sont solides : prix à 3 mois d'écart au plus, au dixième de mois près, aucune offre expirée (une offre vaut jusqu'à son dernier jour inclus) et unités confirmées. Le classeur (colonne Résultat solide) et la page appliquent la même règle ;
 - les écarts de l'onglet Mercuriale contre facture : tarif face au dernier prix payé ;
-- la liste des correspondances à valider, à passer en revue avec le client.
+- combien de correspondances restent à valider, et où : l'onglet À valider du classeur, et la vue À valider de la page.
 
-Corriger `appariements.csv` d'après ses réponses, mettre `provisoire` à `false` dans `config.json` une fois tout validé, puis relancer les étapes 4 et 5, à la même adresse.
+## Étape 7 · Faire valider les correspondances par le client
+
+Le client tranche lui-même, dans le classeur, pas dans la conversation. L'onglet À valider liste une ligne par produit : le libellé de chaque fournisseur, ce qui les distingue, la proposition de Claude, puis une colonne Décision avec une liste déroulante (Même produit, Remplaçable en cuisine, Pas comparable) et une colonne Commentaire. Les produits à trancher sont en haut, en jaune. Une case vide garde la proposition de Claude. Le Comparatif et les Meilleurs prix suivent tout de suite : le client voit le bilan changer.
+
+1. Ouvrir le classeur sur l'onglet À valider, dans Excel, LibreOffice ou la feuille Google Sheets, et le passer en revue avec le client. Commencer par les plus gros achats et par les écarts de plus de 50 %.
+2. Quand il a fini, récupérer ses choix :
+   - **Excel ou LibreOffice** : enregistrer le classeur, puis lancer `scripts/reprendre_validations.py <dossier>` ;
+   - **Google Sheets** : télécharger la feuille au format Excel (Fichier, Télécharger, Microsoft Excel), avec Chrome ou le connecteur Google Drive, ou demander au client de le faire. Puis lancer `scripts/reprendre_validations.py <dossier> <fichier téléchargé>`.
+3. Le script reporte les décisions et les commentaires dans `appariements.csv`, garde la proposition de Claude dans la colonne `proposition` et liste les choix différents de cette proposition : les relire, car un « Pas comparable » sur un produit acheté change le bilan. Quand plus rien n'est à trancher, il passe `provisoire` à `false` dans `config.json`.
+4. Relancer les étapes 4, 4 bis s'il travaille dans Google Sheets, et 5, à la même adresse.
+
+`comparer.py` refuse de reconstruire un classeur qui contient des choix pas encore reportés : lancer d'abord `reprendre_validations.py`, ou supprimer le classeur pour abandonner ces choix. Une remarque donnée à l'oral se reporte dans `appariements.csv` comme un choix fait dans le classeur : changer `type`, mettre `valide` à `oui` et la remarque dans `commentaire`.
 
 Ne pas présenter comme une économie certaine une comparaison de prix d'âges différents. Le franco, les remises de fin d'année et les frais de livraison ne sont pas dans les cadenciers.
 
