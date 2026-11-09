@@ -346,8 +346,10 @@ def main():
     wm = wb.create_sheet("Meilleurs prix", 1)
     wm["A1"] = f"Meilleurs prix · {client}"
     wm["A1"].font = Font(name=POLICE, bold=True, size=14)
-    wm["A2"] = ("Pour chaque produit comparable, le fournisseur le moins cher, sa référence, son conditionnement et "
-                "son prix. Prix HT, hors franco, remises et frais de livraison.")
+    wm["A2"] = ("Pour chaque produit, le fournisseur le moins cher, sa référence, son conditionnement et son prix. "
+                "« qualité différente » en orange : le moins cher n'est pas tout à fait le même produit. Les produits "
+                "à ne pas comparer sont en bas, en gris. Prix HT, hors franco, remises et frais de livraison. L'ordre "
+                "des lignes se remet à jour quand Claude reconstruit le classeur.")
     wm["A2"].font = Font(name=POLICE, size=10, color="55606E")
     if config.get("provisoire", True):
         wm["A3"] = "Résultat provisoire : les correspondances entre produits restent à valider (onglet À valider)."

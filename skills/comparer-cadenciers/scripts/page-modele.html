@@ -7,7 +7,7 @@
 /* Une ardoise de prix : chaque produit est une petite échelle de barres, une couleur par fournisseur. */
 :root{
   --ground:#F3F5F4; --panel:#FFFFFF; --ink:#1B2521; --muted:#566360; --line:#D3DAD6; --soft:#E8EDEA;
-  --ok:#1E7A3C; --ok-soft:#E1F3E7; --warn:#7A5200; --warn-soft:#FBF0CF; --bad:#B3261E; --bad-soft:#FBE3E0; --on:#FFFFFF;
+  --ok:#1E7A3C; --ok-soft:#E1F3E7; --warn:#7A5200; --warn-soft:#FBF0CF; --bad:#B3261E; --bad-soft:#FBE3E0; --on:#FFFFFF; --qual:#9A3412; --qual-soft:#FED7AA;
   --titre:"Bricolage Grotesque","Source Sans 3",system-ui,sans-serif;
   --texte:"Source Sans 3",system-ui,sans-serif;
   --chiffre:"JetBrains Mono",ui-monospace,Menlo,monospace;
@@ -17,14 +17,14 @@
   :root:not([data-theme="light"]){
     color-scheme:dark;
     --ground:#121816; --panel:#1A221F; --ink:#E3EAE6; --muted:#A1AEA8; --line:#2F3B36; --soft:#232D29;
-    --ok:#6FD18E; --ok-soft:#14301E; --warn:#F2C65E; --warn-soft:#3A2E10; --bad:#F08A7A; --bad-soft:#3E1D19; --on:#0D1311;
+    --ok:#6FD18E; --ok-soft:#14301E; --warn:#F2C65E; --warn-soft:#3A2E10; --bad:#F08A7A; --bad-soft:#3E1D19; --on:#0D1311; --qual:#FDBA74; --qual-soft:#3B2412;
     __COULEURS_SOMBRE__
   }
 }
 :root[data-theme="dark"]{
   color-scheme:dark;
   --ground:#121816; --panel:#1A221F; --ink:#E3EAE6; --muted:#A1AEA8; --line:#2F3B36; --soft:#232D29;
-  --ok:#6FD18E; --ok-soft:#14301E; --warn:#F2C65E; --warn-soft:#3A2E10; --bad:#F08A7A; --bad-soft:#3E1D19; --on:#0D1311;
+  --ok:#6FD18E; --ok-soft:#14301E; --warn:#F2C65E; --warn-soft:#3A2E10; --bad:#F08A7A; --bad-soft:#3E1D19; --on:#0D1311; --qual:#FDBA74; --qual-soft:#3B2412;
   __COULEURS_SOMBRE__
 }
 *{box-sizing:border-box}
@@ -92,7 +92,7 @@ details.p summary::-webkit-details-marker{display:none}
 .gain b{font-family:var(--chiffre)}
 .tags{display:flex;flex-wrap:wrap;gap:4px}
 .tag{font-size:12.5px;font-weight:600;border-radius:5px;padding:1px 7px;background:var(--ks);color:var(--k)}
-.ok{--k:var(--ok);--ks:var(--ok-soft)} .warn{--k:var(--warn);--ks:var(--warn-soft)} .bad{--k:var(--bad);--ks:var(--bad-soft)} .neutre{--k:var(--muted);--ks:var(--soft)}
+.ok{--k:var(--ok);--ks:var(--ok-soft)} .warn{--k:var(--warn);--ks:var(--warn-soft)} .bad{--k:var(--bad);--ks:var(--bad-soft)} .qual{--k:var(--qual);--ks:var(--qual-soft)} .neutre{--k:var(--muted);--ks:var(--soft)}
 details.p.hors .piste i,details.p.hors .prix.gagne .piste i{background:var(--line)}
 details.p.hors .prix .qui,details.p.hors .prix .val{color:var(--muted);font-weight:500}
 .detail{border-top:1px solid var(--soft);padding:10px 14px 14px;display:grid;gap:8px}
@@ -254,7 +254,7 @@ function tags(p) {
   const t = [];
   if (p.gagnant === 'non comparable') return '<span class="tag neutre">Non comparable</span>';
   // Qualité différente : comparé quand même, mais le moins cher n'est pas tout à fait le même produit
-  t.push(p.type === 'qualité différente' ? '<span class="tag bad">Qualité différente</span>' : `<span class="tag neutre">${esc(p.type)}</span>`);
+  t.push(p.type === 'qualité différente' ? '<span class="tag qual">Qualité différente</span>' : `<span class="tag neutre">${esc(p.type)}</span>`);
   if (p.solide) t.push('<span class="tag ok">Solide</span>');
   if (p.mois > 3) t.push(`<span class="tag warn">${String(p.mois).replace('.', ',')} mois entre les prix</span>`);
   if (p.doutes > 0) t.push('<span class="tag warn">Unité à confirmer</span>');
