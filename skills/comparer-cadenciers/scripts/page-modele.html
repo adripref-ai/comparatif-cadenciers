@@ -200,7 +200,7 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
     <div id="evo"></div>
   </section>
 
-  <p class="limites">Prix HT, hors franco, remises de fin d'année et frais de livraison. Quand une facture est plus récente que le cadencier, son prix hors promotion est retenu. Les correspondances entre produits doivent être validées par une personne du métier. Mêmes chiffres que le classeur Excel, qui liste aussi les références sans équivalent.</p>
+  <p class="limites">Prix HT, hors franco, remises de fin d'année et frais de livraison. Quand une facture est plus récente que le cadencier, son prix hors promotion est retenu. Les correspondances entre produits sont validées par une personne du métier (vue À valider). Mêmes chiffres que le classeur, qui liste aussi les références sans équivalent.</p>
 </main>
 
 <script type="application/json" id="donnees">__DONNEES__</script>
@@ -216,7 +216,7 @@ const filtre = {gagnant: null, etat: null};
 
 const comparables = D.produits.filter(p => p.gagnant !== 'non comparable' && p.gagnant !== 'seul');
 const ETATS = [
-  {id: 'solide', cls: 'ok', txt: 'résultats solides : prix récents, offres en cours, unités confirmées', test: p => p.solide},
+  {id: 'solide', cls: 'ok', txt: 'résultats solides : prix de moins de 6 mois et proches dans le temps, écart plausible, offres en cours, unités confirmées', test: p => p.solide},
   {id: 'dates', cls: 'warn', txt: 'avec plus de 3 mois entre les prix', test: p => p.mois > 3},
   {id: 'unite', cls: 'warn', txt: 'avec une unité à confirmer', test: p => p.doutes > 0},
   {id: 'expire', cls: 'warn', txt: 'avec une offre expirée', test: p => p.offres.some(o => o.expire)},
@@ -256,6 +256,7 @@ function tags(p) {
   // Qualité différente : comparé quand même, mais le moins cher n'est pas tout à fait le même produit
   t.push(p.type === 'qualité différente' ? '<span class="tag qual">Qualité différente</span>' : `<span class="tag neutre">${esc(p.type)}</span>`);
   if (p.solide) t.push('<span class="tag ok">Solide</span>');
+  if (p.ancien) t.push('<span class="tag warn">Prix de plus de 6 mois</span>');
   if (p.mois > 3) t.push(`<span class="tag warn">${String(p.mois).replace('.', ',')} mois entre les prix</span>`);
   if (p.doutes > 0) t.push('<span class="tag warn">Unité à confirmer</span>');
   if (p.pct > .5) t.push('<span class="tag bad">Écart à contrôler</span>');

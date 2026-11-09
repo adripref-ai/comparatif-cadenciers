@@ -4,6 +4,9 @@ Claude propose un type pour chaque produit (identique, equivalent, qualite, diff
 l'onglet « À valider » du classeur, dans Excel, LibreOffice ou Google Sheets, avec une liste déroulante.
 reprendre_validations.py reporte ensuite ses choix dans appariements.csv, qui reste la seule source.
 """
+import sys
+from pathlib import Path
+
 import openpyxl
 
 ONGLET = "À valider"
@@ -25,6 +28,10 @@ LIBELLE_TYPE = {"identique": "identique", "equivalent": "autre conditionnement",
 TYPES = {"identique": "identique", "equivalent": "equivalent", "équivalent": "equivalent",
          "qualite": "qualite", "qualité": "qualite", "different": "different", "différent": "different"}
 COL_PRODUIT, COL_DECISION, COL_COMMENTAIRE = "Produit", "Décision du client", "Commentaire du client"
+# Colonnes cachées : ce que Claude a écrit à la construction. Une case différente est un choix du client ;
+# une case identique est laissée telle quelle, même si appariements.csv a changé depuis (reprise depuis
+# Google Sheets, remarque orale reportée par Claude).
+COL_ECRIT_DEC, COL_ECRIT_COM = "Décision écrite par Claude (ne pas modifier)", "Commentaire écrit par Claude (ne pas modifier)"
 
 
 def decision_type(texte):
@@ -47,7 +54,8 @@ def normaliser(choix):
 
 
 def lire_decisions(classeur):
-    """Renvoie {produit: (décision, commentaire)} lus dans l'onglet À valider, ou None sans cet onglet."""
+    """{produit: (décision, commentaire, écrit)} lus dans l'onglet À valider, ou None sans cet onglet.
+    écrit : (décision, commentaire) écrits par Claude à la construction, ou None pour un classeur d'avant 0.11."""
     wb = openpyxl.load_workbook(classeur)
     if ONGLET not in wb.sheetnames:
         return None
@@ -58,15 +66,50 @@ def lire_decisions(classeur):
             break
     else:
         return None
-    ip, idec, icom = (titres.index(COL_PRODUIT), titres.index(COL_DECISION),
-                      titres.index(COL_COMMENTAIRE) if COL_COMMENTAIRE in titres else None)
+
+    def col(nom):
+        return titres.index(nom) if nom in titres else None
+
+    ip, idec, icom, iedec, iecom = map(col, (COL_PRODUIT, COL_DECISION, COL_COMMENTAIRE, COL_ECRIT_DEC, COL_ECRIT_COM))
+    texte = lambda r, i: str(r[i] or "").strip() if i is not None else ""
     out = {}
     for r in ws.iter_rows(min_row=rang + 1, values_only=True):
         if not r[ip]:
             continue
-        com = r[icom] if icom is not None else ""
-        out[str(r[ip]).strip()] = (str(r[idec] or "").strip(), str(com or "").strip())
+        ecrit = (texte(r, iedec), texte(r, iecom)) if iedec is not None else None
+        out[str(r[ip]).strip()] = (texte(r, idec), texte(r, icom), ecrit)
     return out
+
+
+def refuser_si_ouvert(classeur):
+    """Excel laisse un fichier ~$<nom> tant que le classeur est ouvert. L'écraser à ce moment-là, c'est risquer
+    qu'Excel réenregistre l'ancienne version par-dessus, ou lire une version que le client n'a pas enregistrée."""
+    classeur = Path(classeur)
+    verrou = next((v for v in classeur.parent.glob("~$*") if classeur.name.endswith(v.name[2:])), None)
+    if verrou:
+        sys.exit(f"Le classeur {classeur.name} est ouvert dans Excel ({verrou.name}). Demander au client de "
+                 "l'enregistrer puis de le fermer, et relancer. S'il est déjà fermé, ce fichier est un reste "
+                 "d'Excel : le supprimer.")
+
+
+def change_par_le_client(dec, com, ecrit):
+    return ecrit is None or normaliser((dec, com)) != normaliser(ecrit)
+
+
+def choix_non_reportes(classeur, reportes):
+    """Produits dont le client a changé le choix dans le classeur sans qu'il soit dans appariements.csv.
+    reportes : {produit: (décision, commentaire)} d'après appariements.csv. Un produit renommé ou retiré
+    depuis la construction compte aussi : son choix serait perdu."""
+    oublies = []
+    for nom, (dec, com, ecrit) in (lire_decisions(classeur) or {}).items():
+        if not change_par_le_client(dec, com, ecrit):
+            continue
+        if nom not in reportes:
+            if ecrit is not None and (dec or com):
+                oublies.append(f"{nom} (absent d'appariements.csv : renommé ou retiré ?)")
+        elif normaliser((dec, com)) != normaliser(reportes[nom]):
+            oublies.append(nom)
+    return oublies
 
 
 def etat(a):

@@ -6,10 +6,11 @@ Usage : generer_page.py <dossier du client> [nom du classeur]
 Les résultats sont recalculés ici à partir des prix du classeur, avec les mêmes règles que ses
 formules : la page ne dépend donc pas d'Excel, et une correction faite dans le classeur est reprise.
 """
+import csv
 import json
 from decimal import ROUND_HALF_UP, Decimal
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from html import escape
 from pathlib import Path
 
@@ -17,7 +18,8 @@ import openpyxl
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).parent))
-from validations import CHOIX, DECISIONS, LIBELLE_TYPE, ONGLET, decision_type, etat, lire_decisions, normaliser  # noqa: E402
+from lecteurs import AGE_MAX_JOURS, ECART_MAX  # noqa: E402
+from validations import CHOIX, DECISIONS, LIBELLE_TYPE, ONGLET, choix_non_reportes, decision_type, etat  # noqa: E402
 
 ICI = Path(__file__).parent
 # Clair, sombre. Mêmes teintes que dans le classeur.
@@ -60,7 +62,7 @@ def main():
     if not classeur.exists():
         sys.exit("Classeur absent : lancer comparer.py d'abord.")
     wb = openpyxl.load_workbook(classeur)
-    noms = ["tarifs.csv", "appariements.csv", "controle_factures.csv", "achats.csv", "familles.csv"]
+    noms = ["tarifs.csv", "appariements.csv", "controle_factures.csv", "familles.csv"]
     try:  # comparer.py note dans le classeur les réglages de config.json qu'il a utilisés
         utilise = json.loads(wb.properties.keywords or "")
         if any(config.get(k) != v for k, v in utilise.items()):
@@ -74,12 +76,11 @@ def main():
 
     # Des choix du client pas encore reportés seraient publiés puis perdus à la prochaine mise à jour
     if (dossier / "appariements.csv").exists():
-        import csv
         reportes = {}
-        for a in csv.DictReader(open(dossier / "appariements.csv", encoding="utf-8-sig")):
-            reportes.setdefault(a["produit"], etat(a))
-        oublies = [nom for nom, choix in (lire_decisions(classeur) or {}).items()
-                   if nom in reportes and normaliser(choix) != normaliser(reportes[nom])]
+        with open(dossier / "appariements.csv", encoding="utf-8-sig") as f:
+            for a in csv.DictReader(f):
+                reportes.setdefault(a["produit"], etat(a))
+        oublies = choix_non_reportes(classeur, reportes)
         if oublies:
             sys.exit(f"Le classeur contient des choix du client pas encore reportés ({', '.join(oublies[:8])}"
                      f"{' ...' if len(oublies) > 8 else ''}) : lancer reprendre_validations.py, puis comparer.py.")
@@ -139,13 +140,14 @@ def main():
         dates = [o.pop("quand") for o in liste]
         mois = arrondi((max(dates) - min(dates)).days / 30.4, 1)
         doutes = sum(o["fiable"] == "à vérifier" for o in liste)
+        ancien = min(dates).date() < date.today() - timedelta(days=AGE_MAX_JOURS)
         produits.append(dict(
             nom=p["Produit"], unite=p["Unité"], famille=p["Famille"], gagnant=gagnant, ecart=ecart, pct=pct,
-            mois=mois, doutes=doutes, type=p["Type"], note=p["Remarque"] or "",
+            mois=mois, doutes=doutes, ancien=ancien, type=p["Type"], note=p["Remarque"] or "",
             proposition=v["proposition"] if v else "", decision=v["decision"] if v else "",
             commentaire=v["commentaire"] if v else "",
-            solide=(gagnant not in ("non comparable", "seul") and mois <= 3 and doutes == 0
-                    and not any(o["expire"] for o in liste)), offres=liste))
+            solide=(gagnant not in ("non comparable", "seul") and mois <= 3 and doutes == 0 and not ancien
+                    and (pct is None or pct <= ECART_MAX) and not any(o["expire"] for o in liste)), offres=liste))
 
     factures = [dict(f=x["Fournisseur"], lib=x["Libellé"], cad=x["Prix cadencier"], dcad=jour(x["Date du cadencier"]),
                      fac=x["Prix facturé"], dfac=jour(x["Date de la facture"]),
@@ -174,7 +176,7 @@ def main():
                 lib=x["Libellé"], marque=x["Marque"] or "", cond=x["Conditionnement"] or "", prix=nb(x["Prix HT"]),
                 up=x["Unité de prix"] or "", pu=nb(x["Prix par kg, litre ou unité"]), u=x["Unité"] or "",
                 dtar=jour(x["Date du tarif"]), expire=isinstance(fin, datetime) and fin.date() < aujourdhui,
-                dpp=nb(x["Dernier prix payé"]), dda=jour(x["Dernier achat"]), nb=nb(x["Achats relevés"]),
+                dpp=nb(x["Dernier prix payé"]), nb=nb(x["Achats relevés"]),
                 gagnant=gagnants.get(x["Produit comparé"] or "", "")))
 
     # Un fournisseur vu sur une facture mais absent du comparatif garde quand même sa couleur

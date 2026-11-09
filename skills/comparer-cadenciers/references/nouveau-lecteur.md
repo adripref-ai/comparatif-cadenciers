@@ -51,7 +51,7 @@ Marquer « à vérifier » toute unité supposée : prix peut-être à la boutei
 
 ## 3. Facture d'un format inconnu
 
-Ajouter à `lecteurs_client.py` une fonction qui prend un chemin et renvoie `None` si la facture n'est pas de ce fournisseur, sinon `(fournisseur, "AAAA-MM-JJ", [(ref, libellé, prix, promo, qte, date_livraison, unite, colisage), ...])`. Les quatre derniers champs sont facultatifs : `qte` est la quantité achetée dans l'unité du prix, `date_livraison` la date de la livraison quand une facture en regroupe plusieurs, `colisage` le nombre d'unités par colis. Ignorer les avoirs.
+Ajouter à `lecteurs_client.py` une fonction qui prend un chemin et renvoie `None` si la facture n'est pas de ce fournisseur, sinon `(fournisseur, "AAAA-MM-JJ", [(ref, libellé, prix, promo, qte, date_livraison, unite, colisage), ...])`. Seuls les quatre premiers champs et `unite` servent : `qte`, `date_livraison` et `colisage` peuvent valoir `None`. Pour un avoir, renvoyer `(fournisseur, None, [])` : il est reconnu, donc pas signalé comme inconnu, mais rien n'est contrôlé. Un fichier pour lequel tous les lecteurs renvoient `None` est signalé par `controler_factures.py` comme non reconnu.
 
 `unite` est l'unité du prix facturé, recopiée de la facture. Elle sert à ramener la facture à l'unité du cadencier, et seulement dans deux cas :
 - au kg ou au litre (`KG`, `KILOS`, `KG NET`, `L`, `LT`, `LITRES`…), face à un tarif dont l'unité de comparaison est le kg ou le litre : 15,763 €/kg contre 19,46 € le demi-pain de 1,4 kg ;

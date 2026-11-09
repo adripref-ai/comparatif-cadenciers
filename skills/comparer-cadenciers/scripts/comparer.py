@@ -21,9 +21,10 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter as L
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from lecteurs import SEUIL_UNITE, cle_ref, nombre, unite_confirmee
+from lecteurs import AGE_MAX_JOURS, ECART_MAX, SEUIL_UNITE, cle_ref, nombre, unite_confirmee
 from suivi import ajouter_onglets, fonctions_incompatibles
-from validations import CHOIX, LIBELLE_TYPE, ONGLET, TYPES, etat, lire_decisions, normaliser
+from validations import (CHOIX, COL_ECRIT_COM, COL_ECRIT_DEC, LIBELLE_TYPE, ONGLET, TYPES, choix_non_reportes,
+                         etat, refuser_si_ouvert)
 
 ICI = None
 COULEURS = {"Sysco": "1D5FA6", "Pro à Pro": "1E7A3C", "Episaveurs": "B45309",
@@ -123,10 +124,9 @@ def main():
         print("\n".join(erreurs))
         sys.exit(1)
     # Des choix faits par le client dans le classeur seraient perdus en le reconstruisant
+    refuser_si_ouvert(SORTIE)
     if SORTIE.exists():
-        dans_classeur = lire_decisions(SORTIE) or {}
-        oublies = [nom for nom, (dec, com) in dans_classeur.items()
-                   if nom in produits and normaliser((dec, com)) != normaliser((produits[nom]["decision"], produits[nom]["commentaire"]))]
+        oublies = choix_non_reportes(SORTIE, {nom: (p["decision"], p["commentaire"]) for nom, p in produits.items()})
         if oublies:
             sys.exit(f"Le classeur contient des choix du client pas encore reportés ({', '.join(oublies[:8])}"
                      f"{' ...' if len(oublies) > 8 else ''}) : lancer d'abord reprendre_validations.py, "
@@ -271,7 +271,10 @@ def main():
                 c.number_format = "0.00"
         # Le choix du client dans l'onglet À valider l'emporte tout de suite : le bilan se recalcule.
         # Case vide : la proposition de Claude, même si un choix précédent a été reporté puis effacé.
-        dec = f"'{ONGLET}'!${col_dec}${rang_val[nom]}"
+        # Cherchée par le nom du produit : trier l'onglet À valider ne mélange pas les décisions
+        v1, v2 = RV + 1, RV + len(a_valider)
+        dec = (f"IFERROR(INDEX('{ONGLET}'!${col_dec}${v1}:${col_dec}${v2},"
+               f"MATCH($A{r},'{ONGLET}'!$B${v1}:$B${v2},0)),\"\")")
         formule = f'"{LIBELLE_TYPE[p["proposition"]]}"'
         for k in reversed(list(CHOIX)):
             formule = f'IF({dec}="{CHOIX[k]}","{LIBELLE_TYPE[k]}",{formule})'
@@ -288,7 +291,9 @@ def main():
         wc.cell(r, cd, f"=COUNTIFS('Détail'!$A$2:$A${dern_d},$A{r},'Détail'!$P$2:$P${dern_d},\"à vérifier\")").number_format = "0"
         wc.cell(r, cx, f"=COUNTIFS('Détail'!$A$2:$A${dern_d},$A{r},'Détail'!$S$2:$S${dern_d},\"expirée\")").number_format = "0"
         g = f"{L(cm)}{r}"
-        wc.cell(r, cs, f'=IF(AND({g}<>"non comparable",{g}<>"seul",{L(cmo)}{r}<=3,{L(cd)}{r}=0,{L(cx)}{r}=0),"oui","")')
+        wc.cell(r, cs, f'=IF(AND({g}<>"non comparable",{g}<>"seul",{L(cmo)}{r}<=3,{L(cd)}{r}=0,{L(cx)}{r}=0,'
+                       f'N({L(cp)}{r})<={ECART_MAX},'
+                       f"_xlfn.MINIFS('Détail'!$N$2:$N${dern_d},'Détail'!$A$2:$A${dern_d},$A{r})>=TODAY()-{AGE_MAX_JOURS}),\"oui\",\"\")")
         wc.cell(r, cn, p["note"])
         r += 1
     dern = r - 1
@@ -426,8 +431,8 @@ def main():
     controle = sorted(lire("controle_factures.csv") if factures else [], key=lambda x: (x["fournisseur"], -abs(float(x["ecart_pct"]))))
     for i, x in enumerate(controle, 2):
         # Le prix du cadencier est ramené à l'unité de la facture, pour comparer ce qui est comparable
-        ramene = float(x.get("prix_cadencier_ramene") or x["prix_cadencier"])
-        unite_cad = x.get("unite_cadencier", "")
+        ramene = float(x["prix_cadencier_ramene"])
+        unite_cad = x["unite_cadencier"]
         wf.cell(i, 1, x["fournisseur"])
         wf.cell(i, 2, x["ref"])
         wf.cell(i, 3, x["libelle"])
@@ -438,8 +443,8 @@ def main():
         wf.cell(i, 8, f"=(G{i}-E{i})/E{i}").number_format = "+0.0%;-0.0%;0.0%"
         wf.cell(i, 9, "oui" if x["promo"] == "1" else "")
         wf.cell(i, 10, int(x["nb_achats"]))
-        wf.cell(i, 11, x.get("unite_facture") or unite_cad)
-        if float(x.get("facteur") or 1) != 1:
+        wf.cell(i, 11, x["unite_facture"] or unite_cad)
+        if float(x["facteur"]) != 1:
             wf.cell(i, 12, f"cadencier : {float(x['prix_cadencier']):.3f} €".replace(".", ",")
                            + f" les {unite_cad}, ramené à 1 {x['unite_facture']}")
     habiller(wf, 2, len(controle) + 1, len(titres))
@@ -509,7 +514,7 @@ def main():
     ws.auto_filter.ref = f"A1:H{max(len(seuls) + 1, 2)}"
 
     # ---------- Mercuriale ----------
-    outils = dict(entete=entete, habiller=habiller, jour=jour, Font=Font, PatternFill=PatternFill,
+    outils = dict(entete=entete, habiller=habiller, jour=jour, PatternFill=PatternFill,
                   FormulaRule=FormulaRule, L=L)
     comp = dict(premiere=premiere, dern=dern, moins_cher=L(cm)) if dern >= premiere else None
     nb_merc = ajouter_onglets(wb, ICI, recent, produits, outils, comp)
@@ -531,11 +536,12 @@ def main():
     wv.merge_cells(start_row=2, start_column=1, end_row=2, end_column=3 + n + 4)
     wv.row_dimensions[2].height = 70
     titres = (["Famille", "Produit", "Unité"] + fournisseurs
-              + ["Ce qui les distingue", "Proposition de Claude", "Décision du client", "Commentaire du client"])
+              + ["Ce qui les distingue", "Proposition de Claude", "Décision du client", "Commentaire du client",
+                 COL_ECRIT_DEC, COL_ECRIT_COM])
     entete(wv, RV, titres)
     for i, f in enumerate(fournisseurs):
         wv.cell(RV, 4 + i).fill = PatternFill("solid", fgColor=COULEURS[f])
-    cdist, cprop, cdec, ccom = (3 + n + k for k in range(1, 5))
+    cdist, cprop, cdec, ccom, cedec, cecom = (3 + n + k for k in range(1, 7))
     for nom, p in a_valider:
         rv = rang_val[nom]
         wv.cell(rv, 1, p["famille"])
@@ -548,6 +554,8 @@ def main():
         wv.cell(rv, cprop, CHOIX[p["proposition"]])
         wv.cell(rv, cdec, p["decision"] or None).font = Font(bold=True)
         wv.cell(rv, ccom, p["commentaire"] or None).alignment = Alignment(wrap_text=True)
+        wv.cell(rv, cedec, p["decision"] or None)
+        wv.cell(rv, cecom, p["commentaire"] or None)
     dern_v = RV + len(a_valider)
     # Compteurs : ce qui reste à trancher, hors produits proposés identiques
     plage_dec, plage_prop = f"{L(cdec)}{RV + 1}:{L(cdec)}{max(dern_v, RV + 1)}", f"{L(cprop)}{RV + 1}:{L(cprop)}{max(dern_v, RV + 1)}"
@@ -588,6 +596,8 @@ def main():
         largeurs[4 + i] = 30
     for c, w in largeurs.items():
         wv.column_dimensions[L(c)].width = w
+    for c in (cedec, cecom):
+        wv.column_dimensions[L(c)].hidden = True
     wv.freeze_panes = wv.cell(RV + 1, 3)
 
     # ---------- Lisez-moi ----------
@@ -598,22 +608,22 @@ def main():
     wl["A1"].font = Font(name=POLICE, bold=True, size=14)
     lignes = [
         ("But", "Comparer les prix des fournisseurs à partir de leurs cadenciers" + (", contrôlés sur les factures." if factures else ". Aucune facture n'a servi au contrôle.")),
-        ("À valider", "Les correspondances proposées par Claude, une ligne par produit, avec le libellé de chaque fournisseur. Le client choisit dans la colonne Décision : Même produit (même conditionnement), Autre conditionnement (même produit, autre format, comparé au kg, au litre ou à l'unité), Qualité différente (comparé quand même, mais signalé) ou Ne pas comparer (erreur d'appariement). Le Comparatif et les Meilleurs prix suivent tout de suite. Claude reporte ensuite ces choix dans ses fichiers : sans cela, ils seraient perdus à la prochaine mise à jour."),
-        ("Comparatif", "Un produit par ligne, un fournisseur par colonne. Le prix le plus bas ressort en vert."),
-        ("Meilleurs prix", "Pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son libellé, son conditionnement et son prix, rangés par fournisseur : ce qu'il vaut mieux acheter chez chacun. À relire avec les colonnes Résultat solide et Comparaison : « qualité différente », en orange, veut dire que le moins cher n'est pas tout à fait le même produit. Les produits non comparables sont en bas, en gris, et s'y ajoutent si le client change d'avis dans l'onglet À valider. « égalité » : un autre fournisseur fait le même prix."),
+        ("À valider", "Les correspondances proposées par Claude, une ligne par produit, avec le libellé de chaque fournisseur. Le client choisit dans la colonne Décision : Même produit (même conditionnement), Autre conditionnement (même produit, autre format, comparé au kg, au litre ou à l'unité), Qualité différente (comparé quand même, mais signalé) ou Ne pas comparer (erreur d'appariement). Le Comparatif et les Meilleurs prix suivent tout de suite. Cet onglet peut être trié. Enregistrer puis fermer le classeur avant de dire à Claude que c'est fait : il reporte ensuite ces choix dans ses fichiers, sans quoi ils seraient perdus à la prochaine mise à jour. Les deux dernières colonnes, cachées, gardent ce que Claude avait écrit : ne pas les modifier."),
+        ("Comparatif", "Un produit par ligne, un fournisseur par colonne. Le prix le plus bas ressort en vert. Filtrer, mais ne pas trier : les formules de cet onglet, du Détail et des Meilleurs prix pointent vers des lignes précises."),
+        ("Meilleurs prix", "Pour chaque produit, le fournisseur le moins cher, avec sa référence, son libellé, son conditionnement et son prix, rangés par fournisseur : ce qu'il vaut mieux acheter chez chacun. À relire avec les colonnes Résultat solide et Comparaison : « qualité différente », en orange, veut dire que le moins cher n'est pas tout à fait le même produit. Les produits à ne pas comparer sont en bas, en gris. Si le client change d'avis dans l'onglet À valider, la ligne passe en gris ou en couleur sur place, et l'ordre se remet à jour quand Claude reconstruit le classeur. « égalité » : un autre fournisseur fait le même prix."),
         ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé (ramené à l'unité de prix du tarif) et le verdict du comparatif."),
         ("Détail", "D'où vient chaque prix : libellé, date, quantité, facture. Les prix en bleu se corrigent à la main, le reste suit."),
         ("Mercuriale contre facture", "Prix de la mercuriale (le tarif du fournisseur) face au dernier prix payé, pour chaque référence retrouvée sur une facture. Quand la facture compte dans une autre unité (au kg pour une pièce de 1,4 kg, à la brique pour un pack de 6), le tarif est ramené à l'unité facturée : la colonne Note le dit."),
         ("Évolutions", "Prix qui ont changé entre deux cadenciers d'un même fournisseur."),
         ("Sans équivalent", "Références lues mais comparées à rien, faute de produit équivalent chez un autre fournisseur."),
-        ("Fond jaune", "« Mois entre les prix » supérieur à 3 : les prix comparés n'ont pas le même âge, le résultat est indicatif. « Prix à vérifier » : unité non confirmée par une facture. « Offres expirées » : prix lu sur une offre dont la fin de validité est passée."),
-        ("Fond orange", "Écart supérieur à 50 % : souvent une erreur d'unité ou deux produits différents. À contrôler avant de s'y fier."),
-        ("Résultat solide", "Prix à 3 mois d'écart au plus, aucune offre expirée, aucune unité à vérifier. Mêmes règles que la page interactive."),
+        ("Fond jaune", "« Mois entre les prix » supérieur à 3 : les prix comparés n'ont pas le même âge, le résultat est indicatif. « Prix à vérifier » : unité non confirmée par une facture. « Offres expirées » : prix lu sur une offre dont la fin de validité est passée. Dans l'onglet À valider : décision encore à prendre."),
+        ("Fond orange", "Écart supérieur à 50 % : souvent une erreur d'unité ou deux produits différents, à contrôler avant de s'y fier. Type ou Comparaison « qualité différente » : le moins cher n'est pas tout à fait le même produit. Dans l'onglet À valider : le client a choisi autre chose que Claude (en vert : il a confirmé la proposition)."),
+        ("Résultat solide", f"Prix à 3 mois d'écart au plus entre eux, aucun de plus de 6 mois, écart de {ECART_MAX:.0%} au plus, aucune offre expirée, aucune unité à vérifier. Mêmes règles que la page interactive."),
         ("Prix retenu", f"Le prix du cadencier, ou celui de la dernière facture hors promotion si elle est plus récente et à moins de {SEUIL_UNITE:.0%} du cadencier. Une facture au kg, au litre ou à l'unité d'un lot est d'abord ramenée à l'unité du cadencier. Plus loin, la facture est sans doute dans une autre unité : son prix n'est pas retenu et la note de lecture le signale."),
         ("Qualité différente", "Pas tout à fait le même produit (marque, qualité, élevage) : les prix sont comparés quand même, mais la colonne Type est en orange. Une économie trouvée ainsi suppose de changer de qualité."),
         ("Non comparable", "Erreur d'appariement (choix « Ne pas comparer ») : produit affiché pour mémoire, jamais compté dans le bilan."),
         ("Tableur", "Ce classeur s'ouvre dans Excel, LibreOffice ou Google Sheets. Pour Google Sheets : dans Google Drive, Nouveau, Importer un fichier, l'ouvrir, puis Fichier, Enregistrer au format Google Sheets. Pour une mise à jour, dans la feuille Google : Fichier, Importer, Remplacer la feuille de calcul, ce qui garde la même adresse. Une correction faite à la main dans le classeur est perdue à la mise à jour : la signaler à Claude pour qu'il la reporte dans ses fichiers."),
-        ("Limites", "Les correspondances entre produits ont été proposées par Claude et restent à valider. Quand un document ne porte pas de date, c'est celle du fichier qui est utilisée. Ce sont des prix HT, hors franco, remises de fin d'année et frais de livraison."),
+        ("Limites", ("Les correspondances entre produits ont été proposées par Claude et restent à valider (onglet À valider). " if config.get("provisoire", True) else "Les correspondances entre produits ont été validées par le client. ") + "Quand un document ne porte pas de date, c'est sa date interne de création, ou à défaut celle du fichier, qui est utilisée. Ce sont des prix HT, hors franco, remises de fin d'année et frais de livraison."),
     ]
     for i, (k, v) in enumerate(lignes, 3):
         wl.cell(i, 1, k).font = Font(name=POLICE, bold=True, size=10)

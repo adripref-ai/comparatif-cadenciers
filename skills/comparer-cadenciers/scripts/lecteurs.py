@@ -78,6 +78,11 @@ def cle_ref(ref):
 # Au-delà, c'est sans doute une autre unité (un carton au lieu d'une bouteille) : rien n'est confirmé.
 SEUIL_UNITE = 0.30
 
+# Un résultat solide : un écart de plus de 50 % est souvent une erreur d'unité, et un prix de plus de
+# 6 mois n'est plus celui qu'on paiera. Mêmes règles dans le classeur et sur la page.
+ECART_MAX = 0.5
+AGE_MAX_JOURS = 183
+
 
 def unite_confirmee(prix_cadencier, prix_facture):
     return prix_facture not in (None, "") and abs(float(prix_facture) - float(prix_cadencier)) <= SEUIL_UNITE * float(prix_cadencier)

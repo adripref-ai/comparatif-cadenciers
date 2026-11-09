@@ -4,7 +4,8 @@
 Usage : reprendre_validations.py <dossier du client> [classeur]
 Le classeur est par défaut Comparatif-fournisseurs.xlsx, dans le dossier du client. Pour une feuille
 Google Sheets, la télécharger d'abord au format Excel (Fichier, Télécharger, Microsoft Excel) et donner
-son chemin. Une case Décision vide rend le produit à la proposition de Claude.
+son chemin. Seules les cases que le client a changées sont reprises : les autres gardent ce que dit
+appariements.csv. Une case Décision vidée rend le produit à la proposition de Claude.
 Quand plus rien n'est à trancher, config.json passe de provisoire à validé.
 Ensuite : relancer comparer.py, calculer_classeur.py et generer_page.py, puis republier.
 """
@@ -16,7 +17,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 
-from validations import CHOIX, ONGLET, TYPES, decision_type, lire_decisions
+from validations import CHOIX, ONGLET, TYPES, change_par_le_client, decision_type, lire_decisions, refuser_si_ouvert
 
 
 def main():
@@ -26,6 +27,7 @@ def main():
     classeur = Path(sys.argv[2]).expanduser() if len(sys.argv) == 3 else ici / "Comparatif-fournisseurs.xlsx"
     if not classeur.exists():
         sys.exit(f"Classeur introuvable : {classeur}")
+    refuser_si_ouvert(classeur)
     decisions = lire_decisions(classeur)
     if decisions is None:
         sys.exit(f"Pas d'onglet « {ONGLET} » dans {classeur.name} : classeur d'une version précédente, "
@@ -48,7 +50,10 @@ def main():
     for nom, groupe in par_produit.items():
         if nom not in decisions:
             continue
-        texte, commentaire = decisions[nom]
+        texte, commentaire, ecrit = decisions[nom]
+        # Case inchangée depuis la construction : appariements.csv fait foi (remarque orale, reprise précédente)
+        if not change_par_le_client(texte, commentaire, ecrit):
+            continue
         try:
             choix = decision_type(texte)
         except ValueError:
@@ -70,12 +75,12 @@ def main():
         print("\n".join(erreurs))
         sys.exit(1)
 
-    with open(chemin, "w", newline="", encoding="utf-8") as f:
+    with open(chemin, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, colonnes)
         w.writeheader()
         w.writerows(lignes)
 
-    absents = [n for n in decisions if n not in par_produit]
+    absents = [n for n, (t, c, e) in decisions.items() if n not in par_produit and (t or c) and change_par_le_client(t, c, e)]
     # Les produits proposés identiques ne demandent pas de décision ; les autres, si
     restants = [n for n, g in par_produit.items()
                 if TYPES.get(g[0]["type"].strip().lower()) != "identique" and g[0].get("valide") != "oui"]
@@ -84,7 +89,8 @@ def main():
         print("Choix différents de la proposition de Claude :")
         print("\n".join(changes))
     if absents:
-        print("Produits du classeur absents d'appariements.csv, ignorés : " + ", ".join(absents))
+        print("ATTENTION, choix du client sur des produits absents d'appariements.csv (renommés ou retirés), "
+              "non repris : " + ", ".join(absents) + ". Les reporter à la main sous le nouveau nom.")
 
     cfg_chemin = ici / "config.json"
     config = json.load(open(cfg_chemin, encoding="utf-8"))

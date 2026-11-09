@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+if len(sys.argv) != 2:
+    sys.exit("Usage : calculer_classeur.py <classeur.xlsx>")
 p = Path(sys.argv[1]).expanduser().resolve()
 excel = Path("/Applications/Microsoft Excel.app")
 conteneur = Path.home() / "Library/Containers/com.microsoft.Excel/Data"
@@ -54,7 +56,10 @@ return "CALCULE"'''
         copie.unlink(missing_ok=True)
 
 
-if sys.platform == "darwin" and excel.exists() and conteneur.exists():
+# Un classeur ouvert dans Excel (fichier ~$) serait écrasé sous les yeux du client
+if any(p.name.endswith(v.name[2:]) for v in p.parent.glob("~$*")):
+    reponse = "PAS_CALCULE : le classeur est ouvert dans Excel"
+elif sys.platform == "darwin" and excel.exists() and conteneur.exists():
     reponse = excel_mac()
 elif shutil.which("soffice"):
     try:
