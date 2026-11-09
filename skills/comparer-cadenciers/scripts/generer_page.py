@@ -17,7 +17,7 @@ import openpyxl
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).parent))
-from validations import CHOIX, DECISIONS, LIBELLE_TYPE, ONGLET, decision_type, etat, lire_decisions  # noqa: E402
+from validations import CHOIX, DECISIONS, LIBELLE_TYPE, ONGLET, decision_type, etat, lire_decisions, normaliser  # noqa: E402
 
 ICI = Path(__file__).parent
 # Clair, sombre. Mêmes teintes que dans le classeur.
@@ -79,7 +79,7 @@ def main():
         for a in csv.DictReader(open(dossier / "appariements.csv", encoding="utf-8-sig")):
             reportes.setdefault(a["produit"], etat(a))
         oublies = [nom for nom, choix in (lire_decisions(classeur) or {}).items()
-                   if nom in reportes and choix != reportes[nom]]
+                   if nom in reportes and normaliser(choix) != normaliser(reportes[nom])]
         if oublies:
             sys.exit(f"Le classeur contient des choix du client pas encore reportés ({', '.join(oublies[:8])}"
                      f"{' ...' if len(oublies) > 8 else ''}) : lancer reprendre_validations.py, puis comparer.py.")

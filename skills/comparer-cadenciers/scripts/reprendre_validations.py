@@ -16,10 +16,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 
-from validations import CHOIX, ONGLET, decision_type, lire_decisions
-
-TYPES = {"identique": "identique", "equivalent": "equivalent", "équivalent": "equivalent",
-         "different": "different", "différent": "different"}
+from validations import CHOIX, ONGLET, TYPES, decision_type, lire_decisions
 
 
 def main():

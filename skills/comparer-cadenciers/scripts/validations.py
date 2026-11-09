@@ -1,6 +1,6 @@
 """Validation des correspondances entre produits par le client.
 
-Claude propose un type pour chaque produit (identique, equivalent, different). Le client tranche dans
+Claude propose un type pour chaque produit (identique, equivalent, qualite, different). Le client tranche dans
 l'onglet « À valider » du classeur, dans Excel, LibreOffice ou Google Sheets, avec une liste déroulante.
 reprendre_validations.py reporte ensuite ses choix dans appariements.csv, qui reste la seule source.
 """
@@ -8,10 +8,22 @@ import openpyxl
 
 ONGLET = "À valider"
 # Les mots du client, dans l'ordre de la liste déroulante
-CHOIX = {"identique": "Même produit", "equivalent": "Remplaçable en cuisine", "different": "Pas comparable"}
+# - Même produit : même produit, même conditionnement.
+# - Autre conditionnement : même produit, seul le conditionnement change ; comparé au kg, au litre ou à l'unité.
+# - Qualité différente : pas tout à fait le même produit (marque, qualité, élevage) ; comparé quand même,
+#   mais signalé partout.
+# - Ne pas comparer : erreur d'appariement ; affiché pour mémoire, jamais compté.
+CHOIX = {"identique": "Même produit", "equivalent": "Autre conditionnement", "qualite": "Qualité différente",
+         "different": "Ne pas comparer"}
 DECISIONS = {v.lower(): k for k, v in CHOIX.items()}
+# Mots des versions 0.9.0 et 0.9.1, encore acceptés dans un classeur rempli avant
+DECISIONS.update({"remplaçable en cuisine": "equivalent", "pas comparable": "different"})
 # Libellés de la colonne Type du Comparatif
-LIBELLE_TYPE = {"identique": "identique", "equivalent": "équivalent", "different": "non comparable"}
+LIBELLE_TYPE = {"identique": "identique", "equivalent": "autre conditionnement", "qualite": "qualité différente",
+                "different": "non comparable"}
+# Ce qu'on peut écrire dans la colonne type d'appariements.csv
+TYPES = {"identique": "identique", "equivalent": "equivalent", "équivalent": "equivalent",
+         "qualite": "qualite", "qualité": "qualite", "different": "different", "différent": "different"}
 COL_PRODUIT, COL_DECISION, COL_COMMENTAIRE = "Produit", "Décision du client", "Commentaire du client"
 
 
@@ -23,6 +35,15 @@ def decision_type(texte):
     if t.lower() not in DECISIONS:
         raise ValueError(t)
     return DECISIONS[t.lower()]
+
+
+def normaliser(choix):
+    """(décision, commentaire) avec la décision ramenée à son type : « Pas comparable » (0.9.x) vaut « Ne pas comparer »."""
+    dec, com = choix
+    try:
+        return decision_type(dec), com
+    except ValueError:
+        return dec, com
 
 
 def lire_decisions(classeur):
@@ -51,5 +72,5 @@ def lire_decisions(classeur):
 def etat(a):
     """Ce qu'appariements.csv dit d'un produit, d'après sa première ligne : (décision affichée, commentaire)."""
     valide = (a.get("valide") or "").strip().lower() == "oui"
-    typ = {"équivalent": "equivalent", "différent": "different"}.get(a["type"].strip().lower(), a["type"].strip().lower())
+    typ = TYPES.get(a["type"].strip().lower(), a["type"].strip().lower())
     return (CHOIX.get(typ, "") if valide else "", (a.get("commentaire") or "").strip())

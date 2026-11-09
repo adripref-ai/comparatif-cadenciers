@@ -7,7 +7,7 @@ Compare les prix des fournisseurs d'un restaurant à partir de leurs cadenciers.
 1. Lit les cadenciers PDF ou Excel, et compte les lignes pour n'en perdre aucune.
 2. Ramène les prix au kg, au litre ou à l'unité.
 3. Contrôle les prix et les unités sur les factures.
-4. Met en face les produits équivalents. Le client valide lui-même chaque correspondance dans l'onglet À valider du classeur, avec une liste déroulante, et le bilan suit tout de suite.
+4. Met en face les produits équivalents. Le client valide lui-même chaque correspondance dans l'onglet À valider du classeur, avec une liste déroulante : même produit, autre conditionnement (comparé au kg ou au litre), qualité différente (comparé mais signalé) ou ne pas comparer. Le bilan suit tout de suite.
 5. Produit un classeur, qui s'ouvre dans Excel, LibreOffice ou Google Sheets : correspondances à valider, comparatif, meilleurs prix (le fournisseur le moins cher de chaque produit, avec son conditionnement), mercuriale, détail, mercuriale contre facture, évolutions.
 6. Tient une mercuriale : tous les fournisseurs et tous leurs tarifs dans un seul tableau, avec le dernier prix payé.
 7. Met la mercuriale face aux factures : pour chaque référence achetée, le tarif du fournisseur face au dernier prix payé.

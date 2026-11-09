@@ -54,16 +54,16 @@ Facture d'un format inconnu, PDF ou non : voir `references/nouveau-lecteur.md`. 
 
 - `unite` : `€/kg`, `€/L`, ou une unité libre comme `€/boîte 4/4`.
 - `unite` : la même sur toutes les lignes d'un produit.
-- `type` : `identique` (même marque, même format), `equivalent` (substituable en cuisine), `different` (affiché mais jamais compté). Les accents sont acceptés.
+- `type` : `identique` (même produit, même conditionnement), `equivalent` (même produit, seul le conditionnement change : bouteille ou bidon, 1 L ou 5 L ; comparé au kg, au litre ou à l'unité), `qualite` (pas tout à fait le même produit : autre marque, autre qualité, autre élevage ; comparé quand même, mais signalé en orange), `different` (erreur d'appariement : affiché pour mémoire, jamais compté). Les accents sont acceptés.
 - `qte_forcee` : obligatoire si l'unité n'est pas celle du cadencier. Mettre 1 pour comparer à la pièce. `0,75` et `0.75` sont acceptés. Elle ne confirme pas une unité supposée : seule une facture le fait. Seule exception, `1` quand la quantité manquait au cadencier, puisque rien n'est alors déduit.
 - `note` : ce qui distingue les produits (marque, format, pourcentage). Le client la lit pour trancher : l'écrire pour lui.
 - `proposition`, `valide`, `commentaire` : remplies par `reprendre_validations.py`, ne pas les écrire à la main.
 
-Commencer par ce que le client achète vraiment, d'après les factures, ou à défaut d'après ses cadenciers personnalisés, plutôt que les tarifs généraux. Dans le doute, choisir `different`. Ne jamais rapprocher un surgelé d'un frais, ni un lyophilisé d'un surgelé.
+Commencer par ce que le client achète vraiment, d'après les factures, ou à défaut d'après ses cadenciers personnalisés, plutôt que les tarifs généraux. Dans le doute entre deux produits de même nature (des œufs plein air et des œufs de cage, deux vinaigres balsamiques de marques différentes), choisir `qualite` : le client voit quand même la différence de prix. Garder `different` pour deux produits qui ne sont pas de même nature. Ne jamais rapprocher un surgelé d'un frais, ni un lyophilisé d'un surgelé.
 
 Ne mettre que les produits présents chez au moins deux fournisseurs, avec une seule référence par fournisseur et par produit. Les autres apparaissent d'eux-mêmes dans l'onglet Sans équivalent du classeur. `type` et `note` se lisent sur la première ligne de chaque produit. Si très peu de produits se recoupent, le dire clairement : c'est un résultat, pas une erreur. Avec aucun produit commun, le classeur est quand même produit, avec l'onglet Sans équivalent.
 
-Continuer sans attendre. Seule une personne du métier sait si deux produits se remplacent : tant qu'elle n'a pas validé les `equivalent` et `different`, annoncer le comparatif comme provisoire. Elle tranche à l'étape 6, dans l'onglet À valider du classeur.
+Continuer sans attendre. Seule une personne du métier sait si deux produits se valent : tant qu'elle n'a pas validé les `equivalent`, `qualite` et `different`, annoncer le comparatif comme provisoire. Elle tranche à l'étape 6, dans l'onglet À valider du classeur.
 
 ## Étape 3 bis · Préparer la mercuriale
 
@@ -115,13 +115,13 @@ Dire simplement :
 
 ## Étape 7 · Faire valider les correspondances par le client
 
-Le client tranche lui-même, dans le classeur, pas dans la conversation. L'onglet À valider liste une ligne par produit : le libellé de chaque fournisseur, ce qui les distingue, la proposition de Claude, puis une colonne Décision avec une liste déroulante (Même produit, Remplaçable en cuisine, Pas comparable) et une colonne Commentaire. Les produits à trancher sont en haut, en jaune. Une case vide garde la proposition de Claude. Le Comparatif et les Meilleurs prix suivent tout de suite : le client voit le bilan changer.
+Le client tranche lui-même, dans le classeur, pas dans la conversation. L'onglet À valider liste une ligne par produit : le libellé de chaque fournisseur, ce qui les distingue, la proposition de Claude, puis une colonne Décision avec une liste déroulante (Même produit, Autre conditionnement, Qualité différente, Ne pas comparer) et une colonne Commentaire. Les mots « Remplaçable en cuisine » et « Pas comparable » des versions 0.9.0 et 0.9.1 restent acceptés. Les produits à trancher sont en haut, en jaune. Une case vide garde la proposition de Claude. Le Comparatif et les Meilleurs prix suivent tout de suite : le client voit le bilan changer.
 
 1. Ouvrir le classeur sur l'onglet À valider, dans Excel, LibreOffice ou la feuille Google Sheets, et le passer en revue avec le client. Commencer par les plus gros achats et par les écarts de plus de 50 %.
 2. Quand il a fini, récupérer ses choix :
    - **Excel ou LibreOffice** : enregistrer le classeur, puis lancer `scripts/reprendre_validations.py <dossier>` ;
    - **Google Sheets** : télécharger la feuille au format Excel (Fichier, Télécharger, Microsoft Excel), avec Chrome ou le connecteur Google Drive, ou demander au client de le faire. Puis lancer `scripts/reprendre_validations.py <dossier> <fichier téléchargé>`.
-3. Le script reporte les décisions et les commentaires dans `appariements.csv`, garde la proposition de Claude dans la colonne `proposition` et liste les choix différents de cette proposition : les relire, car un « Pas comparable » sur un produit acheté change le bilan. Quand plus rien n'est à trancher, il passe `provisoire` à `false` dans `config.json`.
+3. Le script reporte les décisions et les commentaires dans `appariements.csv`, garde la proposition de Claude dans la colonne `proposition` et liste les choix différents de cette proposition : les relire, car un « Ne pas comparer » sur un produit acheté change le bilan. Dans le compte rendu, citer les produits « Qualité différente » où le moins cher change de qualité. Quand plus rien n'est à trancher, il passe `provisoire` à `false` dans `config.json`.
 4. Relancer les étapes 4, 4 bis s'il travaille dans Google Sheets, et 5, à la même adresse.
 
 `comparer.py` refuse de reconstruire un classeur qui contient des choix pas encore reportés : lancer d'abord `reprendre_validations.py`, ou supprimer le classeur pour abandonner ces choix. Une remarque donnée à l'oral se reporte dans `appariements.csv` comme un choix fait dans le classeur : changer `type`, mettre `valide` à `oui` et la remarque dans `commentaire`.

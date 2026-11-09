@@ -161,7 +161,7 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
   </section>
 
   <section class="vue" id="v-valider" hidden>
-    <p class="meta">Les produits que Claude a mis en face. Seule une personne du métier sait s'ils se remplacent : le client tranche dans l'onglet « À valider » du classeur (Excel ou Google Sheets), puis Claude reporte ses choix ici.</p>
+    <p class="meta">Les produits que Claude a mis en face. Seule une personne du métier sait s'ils se valent : le client tranche dans l'onglet « À valider » du classeur (Excel ou Google Sheets), puis Claude reporte ses choix ici. « Même produit » : pareil. « Autre conditionnement » : même produit, autre format, comparé au kg, au litre ou à l'unité. « Qualité différente » : comparé quand même, mais signalé. « Ne pas comparer » : erreur, jamais compté.</p>
     <div class="outils">
       <select id="vfil" aria-label="Afficher">
         <option value="trancher">À trancher</option>
@@ -253,7 +253,8 @@ function dessinerBilan() {
 function tags(p) {
   const t = [];
   if (p.gagnant === 'non comparable') return '<span class="tag neutre">Non comparable</span>';
-  t.push(`<span class="tag neutre">${esc(p.type)}</span>`);
+  // Qualité différente : comparé quand même, mais le moins cher n'est pas tout à fait le même produit
+  t.push(p.type === 'qualité différente' ? '<span class="tag bad">Qualité différente</span>' : `<span class="tag neutre">${esc(p.type)}</span>`);
   if (p.solide) t.push('<span class="tag ok">Solide</span>');
   if (p.mois > 3) t.push(`<span class="tag warn">${String(p.mois).replace('.', ',')} mois entre les prix</span>`);
   if (p.doutes > 0) t.push('<span class="tag warn">Unité à confirmer</span>');
