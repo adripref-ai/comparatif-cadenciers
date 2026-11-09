@@ -271,11 +271,12 @@ def main():
                 c = wc.cell(r, c0 + i, f"='Détail'!M{cellule[(nom, f)]}")
                 c.font = Font(color="008000")
                 c.number_format = "0.00"
-        # Le choix du client dans l'onglet À valider l'emporte tout de suite : le bilan se recalcule
+        # Le choix du client dans l'onglet À valider l'emporte tout de suite : le bilan se recalcule.
+        # Case vide : la proposition de Claude, même si un choix précédent a été reporté puis effacé.
         dec = f"'{ONGLET}'!${col_dec}${rang_val[nom]}"
         wc.cell(r, ct, f'=IF({dec}="{CHOIX["identique"]}","{LIBELLE_TYPE["identique"]}",'
                        f'IF({dec}="{CHOIX["equivalent"]}","{LIBELLE_TYPE["equivalent"]}",'
-                       f'IF({dec}="{CHOIX["different"]}","{LIBELLE_TYPE["different"]}","{LIBELLE_TYPE[p["type"]]}")))')
+                       f'IF({dec}="{CHOIX["different"]}","{LIBELLE_TYPE["different"]}","{LIBELLE_TYPE[p["proposition"]]}")))')
         rng = f"{a}{r}:{b}{r}"
         typ = f"{L(ct)}{r}"
         wc.cell(r, cm, f'=IF({typ}="non comparable","non comparable",IF(COUNT({rng})<2,"seul",'
@@ -353,13 +354,15 @@ def main():
               "Remarque"]
     rm = 5
     entete(wm, rm, titres)
-    comparables = [(nom, p) for nom, p in ordre if p["type"] != "different" and len(p["lignes"]) >= 2]
+    # Tous les produits y figurent, pour suivre les choix du client sans reconstruire : ceux qui ne sont
+    # pas comparables à la construction vont en bas, et leur ligne affiche « non comparable »
+    comparables = [(nom, p) for nom, p in ordre if len(p["lignes"]) >= 2]
 
     def gagnant(nom):
         prix = [(prevu[(nom, f)], i) for i, f in enumerate(fournisseurs) if (nom, f) in prevu]
         return min(prix)[1]
 
-    comparables.sort(key=lambda kv: gagnant(kv[0]))
+    comparables.sort(key=lambda kv: (kv[1]["type"] == "different", gagnant(kv[0])))
     i = rm + 1
     for nom, p in comparables:
         rc = rang_comp[nom]
@@ -396,6 +399,8 @@ def main():
         for f in fournisseurs:
             wm.conditional_formatting.add(f"A{rm + 1}:A{dern_m}", FormulaRule(
                 formula=[f'$A{rm + 1}="{f}"'], font=Font(bold=True, color=COULEURS[f])))
+        wm.conditional_formatting.add(f"A{rm + 1}:{L(len(titres))}{dern_m}", FormulaRule(
+            formula=[f'$A{rm + 1}="{LIBELLE_TYPE["different"]}"'], font=Font(color="8A94A3")))
         wm.conditional_formatting.add(f"L{rm + 1}:L{dern_m}", FormulaRule(
             formula=[f'$L{rm + 1}="oui"'], fill=PatternFill("solid", bgColor="D1FAE5")))
         wm.auto_filter.ref = f"A{rm}:{L(len(titres))}{dern_m}"
@@ -582,7 +587,7 @@ def main():
         ("But", "Comparer les prix des fournisseurs à partir de leurs cadenciers" + (", contrôlés sur les factures." if factures else ". Aucune facture n'a servi au contrôle.")),
         ("À valider", "Les correspondances proposées par Claude, une ligne par produit, avec le libellé de chaque fournisseur. Le client choisit dans la colonne Décision : Même produit, Remplaçable en cuisine ou Pas comparable. Le Comparatif et les Meilleurs prix suivent tout de suite. Claude reporte ensuite ces choix dans ses fichiers : sans cela, ils seraient perdus à la prochaine mise à jour."),
         ("Comparatif", "Un produit par ligne, un fournisseur par colonne. Le prix le plus bas ressort en vert."),
-        ("Meilleurs prix", "Pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son libellé, son conditionnement et son prix, rangés par fournisseur : ce qu'il vaut mieux acheter chez chacun. À relire avec la colonne Résultat solide. « égalité » : un autre fournisseur fait le même prix."),
+        ("Meilleurs prix", "Pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son libellé, son conditionnement et son prix, rangés par fournisseur : ce qu'il vaut mieux acheter chez chacun. À relire avec la colonne Résultat solide. Les produits non comparables sont en bas, en gris, et s'y ajoutent si le client change d'avis dans l'onglet À valider. « égalité » : un autre fournisseur fait le même prix."),
         ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé (ramené à l'unité de prix du tarif) et le verdict du comparatif."),
         ("Détail", "D'où vient chaque prix : libellé, date, quantité, facture. Les prix en bleu se corrigent à la main, le reste suit."),
         ("Mercuriale contre facture", "Prix de la mercuriale (le tarif du fournisseur) face au dernier prix payé, pour chaque référence retrouvée sur une facture. Quand la facture compte dans une autre unité (au kg pour une pièce de 1,4 kg, à la brique pour un pack de 6), le tarif est ramené à l'unité facturée : la colonne Note le dit."),

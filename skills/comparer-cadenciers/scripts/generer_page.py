@@ -17,7 +17,7 @@ import openpyxl
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).parent))
-from validations import CHOIX, DECISIONS, LIBELLE_TYPE, ONGLET, decision_type  # noqa: E402
+from validations import CHOIX, DECISIONS, LIBELLE_TYPE, ONGLET, decision_type, etat, lire_decisions  # noqa: E402
 
 ICI = Path(__file__).parent
 # Clair, sombre. Mêmes teintes que dans le classeur.
@@ -71,6 +71,18 @@ def main():
     plus_recente = max((p for p in entrees if p.exists()), key=lambda p: p.stat().st_mtime, default=None)
     if plus_recente and plus_recente.stat().st_mtime > classeur.stat().st_mtime:
         sys.exit(f"Classeur plus ancien que {plus_recente.name} : relancer comparer.py d'abord.")
+
+    # Des choix du client pas encore reportés seraient publiés puis perdus à la prochaine mise à jour
+    if (dossier / "appariements.csv").exists():
+        import csv
+        reportes = {}
+        for a in csv.DictReader(open(dossier / "appariements.csv", encoding="utf-8-sig")):
+            reportes.setdefault(a["produit"], etat(a))
+        oublies = [nom for nom, choix in (lire_decisions(classeur) or {}).items()
+                   if nom in reportes and choix != reportes[nom]]
+        if oublies:
+            sys.exit(f"Le classeur contient des choix du client pas encore reportés ({', '.join(oublies[:8])}"
+                     f"{' ...' if len(oublies) > 8 else ''}) : lancer reprendre_validations.py, puis comparer.py.")
 
     wc = wb["Comparatif"]
     rang = next(r for r in range(1, 40) if wc.cell(r, 1).value == "Produit")
