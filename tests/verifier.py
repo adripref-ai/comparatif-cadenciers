@@ -179,6 +179,10 @@ def main():
     p = reconstruire(ici)
     verifier(p["Crème liquide"]["type"] == "qualité différente", "case vidée : la proposition devrait revenir")
 
+    # La feuille Google est importée maintenant, puis téléchargée plus tard, après une remarque orale
+    telecharge = ici.parent / "telecharge.xlsx"
+    shutil.copy(classeur, telecharge)
+
     # Une remarque orale reportée dans appariements.csv ne bloque pas la reconstruction
     lignes = appariements(ici)
     for a in lignes:
@@ -191,9 +195,7 @@ def main():
     p = reconstruire(ici)
     verifier(p["Farine T55"]["type"] == "qualité différente", "remarque orale perdue à la reconstruction")
 
-    # Choix repris depuis une feuille Google téléchargée : le classeur local se reconstruit sans perte
-    telecharge = ici.parent / "telecharge.xlsx"
-    shutil.copy(classeur, telecharge)
+    # Choix repris depuis cette feuille : seules ses cases changées comptent, la remarque orale reste
     decider(telecharge, {"Sel fin": "Qualité différente"})
     lancer("reprendre_validations.py", ici, telecharge)
     p = reconstruire(ici)
