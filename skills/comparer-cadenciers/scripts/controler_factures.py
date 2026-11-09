@@ -106,7 +106,7 @@ def main():
         sys.path.insert(0, str(ICI))
         lecteurs_client = getattr(importlib.import_module("lecteurs_client"), "FACTURES", [])
     achats = defaultdict(list)
-    releve = []  # chaque ligne achetée, pour estimer les consommations du cadencier de commande
+    releve = []  # chaque ligne achetée, pour le dernier prix payé de la mercuriale
     compte = defaultdict(int)
     deja_lues = set()
     dossier = Path(config.get("factures") or "factures").expanduser()

@@ -54,8 +54,7 @@ def main():
     if not classeur.exists():
         sys.exit("Classeur absent : lancer comparer.py d'abord.")
     wb = openpyxl.load_workbook(classeur)
-    noms = ["tarifs.csv", "appariements.csv", "controle_factures.csv", "achats.csv", "fournisseurs.csv",
-            "stocks.csv", "familles.csv"]
+    noms = ["tarifs.csv", "appariements.csv", "controle_factures.csv", "achats.csv", "familles.csv"]
     try:  # comparer.py note dans le classeur les réglages de config.json qu'il a utilisés
         utilise = json.loads(wb.properties.keywords or "")
         if any(config.get(k) != v for k, v in utilise.items()):
@@ -112,21 +111,21 @@ def main():
     factures = [dict(f=x["Fournisseur"], lib=x["Libellé"], cad=x["Prix cadencier"], dcad=jour(x["Date du cadencier"]),
                      fac=x["Prix facturé"], dfac=jour(x["Date de la facture"]),
                      ecart=(x["Prix facturé"] - x["Prix cadencier"]) / x["Prix cadencier"],
-                     promo=x["Promo"] == "oui", n=x["Nombre d'achats"]) for x in table(wb["Cadencier contre facture"], 1)]
+                     promo=x["Promo"] == "oui", n=x["Nombre d'achats"]) for x in table(wb["Mercuriale contre facture"], 1)]
     factures.sort(key=lambda x: -abs(x["ecart"]))
     evolutions = [dict(f=x["Fournisseur"], lib=x["Libellé"], avant=x["Ancien prix"], davant=jour(x["Ancien cadencier"]),
                        apres=x["Nouveau prix"], dapres=jour(x["Nouveau cadencier"]),
                        ecart=(x["Nouveau prix"] - x["Ancien prix"]) / x["Ancien prix"])
                   for x in table(wb["Évolutions"], 1)]
 
-    # Mercuriale et cadencier de commande : valeurs du classeur, verdict repris du comparatif ci-dessus
+    # Mercuriale : valeurs du classeur, verdict repris du comparatif ci-dessus
     gagnants = {p["nom"]: p["gagnant"] for p in produits}
     aujourdhui = date.today()
 
     def nb(v):
         return v if isinstance(v, (int, float)) else None
 
-    mercuriale, cadencier = [], []
+    mercuriale = []
     if "Mercuriale" in wb.sheetnames:
         for x in table(wb["Mercuriale"], 1):
             fin = x["Fin de validité"]
@@ -137,18 +136,9 @@ def main():
                 dtar=jour(x["Date du tarif"]), expire=isinstance(fin, datetime) and fin.date() < aujourdhui,
                 dpp=nb(x["Dernier prix payé"]), dda=jour(x["Dernier achat"]), nb=nb(x["Achats relevés"]),
                 gagnant=gagnants.get(x["Produit comparé"] or "", "")))
-    if "Cadencier de commande" in wb.sheetnames:
-        for x in table(wb["Cadencier de commande"], 1):
-            cadencier.append(dict(
-                fam=x["Famille"], prod=x["Produit comparé"] or "", f=x["Fournisseur"], ref=str(x["Réf."]),
-                lib=x["Libellé"], u=x["Unité"] or "", colis=nb(x["Colisage"]), conso=nb(x["Consommation par semaine"]),
-                base=x["Base de l'estimation"] or "", jours=x["Jours de livraison"] or "",
-                lps=nb(x["Livraisons par semaine"]), delai=nb(x["Délai de commande (jours)"]) or 0,
-                secu=nb(x["Sécurité (jours)"]) or 0, stock=nb(x["Stock"]), dstock=jour(x["Date du stock"]),
-                prix=nb(x["Dernier prix payé"]), gagnant=gagnants.get(x["Produit comparé"] or "", "")))
 
     # Un fournisseur vu sur une facture mais absent du comparatif garde quand même sa couleur
-    tous = fournisseurs + sorted({x["f"] for x in factures + evolutions + mercuriale + cadencier} - set(fournisseurs))
+    tous = fournisseurs + sorted({x["f"] for x in factures + evolutions + mercuriale} - set(fournisseurs))
     teintes, libres = [], iter(PALETTE * 3)
     for f in tous:
         teintes.append(COULEURS.get(f) or next(libres))
@@ -156,7 +146,7 @@ def main():
     sombre = " ".join(f"--f{i}:{c[1]};" for i, c in enumerate(teintes))
 
     donnees = dict(client=client, provisoire=config.get("provisoire", True), fournisseurs=tous, produits=produits,
-                   factures=factures, evolutions=evolutions, mercuriale=mercuriale, cadencier=cadencier)
+                   factures=factures, evolutions=evolutions, mercuriale=mercuriale)
     texte = json.dumps(donnees, ensure_ascii=False).replace("</", "<\\/")
     page = (ICI / "page-modele.html").read_text(encoding="utf-8")
     page = (page.replace("__TITRE__", escape(f"Comparatif {client}"))

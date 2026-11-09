@@ -21,7 +21,6 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter as L
 
 from lecteurs import SEUIL_UNITE, cle_ref, nombre, unite_confirmee
-from reprendre_stocks import Illisible, lire_saisies, reprendre
 from suivi import ajouter_onglets, fonctions_incompatibles
 
 ICI = None
@@ -41,7 +40,7 @@ def lire(nom):
 
 
 # Clés de config.json qui changent le classeur. Les autres (artefact, google_sheets, tableur) n'y sont pas.
-CONFIG_UTILE = ("client", "factures", "provisoire", "securite_jours")
+CONFIG_UTILE = ("client", "factures", "provisoire")
 
 def jour(txt):
     return date.fromisoformat(txt) if txt else None
@@ -73,15 +72,6 @@ def main():
     config = json.load(open(ICI / "config.json", encoding="utf-8"))
     client = config["client"]
     SORTIE = ICI / "Comparatif-fournisseurs.xlsx"
-    # Ce que le client a saisi dans le classeur existant serait perdu à la reconstruction : on le reprend
-    if SORTIE.exists():
-        try:
-            saisies, a_origine = lire_saisies(SORTIE)
-        except Illisible:
-            saisies, a_origine = [], False
-        if saisies and a_origine:
-            for ligne in reprendre(ICI, saisies, a_origine, date.today().isoformat(), SORTIE.name, auto=True):
-                print("Reprise du classeur existant : " + ligne)
     tarifs = lire("tarifs.csv")
     recent = {}
     for t in tarifs:
@@ -374,8 +364,8 @@ def main():
         wm.column_dimensions[L(k)].width = w
     wm.freeze_panes = wm.cell(rm + 1, 1)
 
-    # ---------- Cadencier contre facture ----------
-    wf = wb.create_sheet("Cadencier contre facture")
+    # ---------- Mercuriale contre facture ----------
+    wf = wb.create_sheet("Mercuriale contre facture")
     titres = ["Fournisseur", "Réf.", "Libellé", "Date du cadencier", "Prix cadencier", "Date de la facture",
               "Prix facturé", "Écart %", "Promo", "Nombre d'achats"]
     entete(wf, 1, titres)
@@ -457,11 +447,11 @@ def main():
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:H{max(len(seuls) + 1, 2)}"
 
-    # ---------- Mercuriale et cadencier de commande ----------
+    # ---------- Mercuriale ----------
     outils = dict(entete=entete, habiller=habiller, jour=jour, Font=Font, PatternFill=PatternFill,
                   FormulaRule=FormulaRule, L=L)
     comp = dict(premiere=premiere, dern=dern, moins_cher=L(cm)) if dern >= premiere else None
-    nb_merc, nb_cad = ajouter_onglets(wb, ICI, config, recent, produits, outils, comp)
+    nb_merc = ajouter_onglets(wb, ICI, recent, produits, outils, comp)
     # Meilleurs prix juste après le Comparatif, qu'il résume
     wb.move_sheet("Meilleurs prix", wb.sheetnames.index("Comparatif") + 1 - wb.sheetnames.index("Meilleurs prix"))
 
@@ -476,9 +466,8 @@ def main():
         ("Comparatif", "Un produit par ligne, un fournisseur par colonne. Le prix le plus bas ressort en vert."),
         ("Meilleurs prix", "Pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son libellé, son conditionnement et son prix, rangés par fournisseur : ce qu'il vaut mieux acheter chez chacun. À relire avec la colonne Résultat solide. « égalité » : un autre fournisseur fait le même prix."),
         ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé et le verdict du comparatif."),
-        ("Cadencier de commande", "Ce que le client achète : consommation par semaine estimée sur les factures, jours de livraison, stock et quantité à commander pour tenir jusqu'à la livraison suivante, arrondie au colis. Les cases en bleu se corrigent à la main : colisage, consommation, livraisons, délai, sécurité, stock et sa date. Changer la date quand on recompte : sinon un nouveau stock est daté du jour où Claude le reprend. Ne pas toucher la dernière colonne, cachée, qui sert à repérer ce qui a été changé."),
         ("Détail", "D'où vient chaque prix : libellé, date, quantité, facture. Les prix en bleu se corrigent à la main, le reste suit."),
-        ("Cadencier contre facture", "Prix du cadencier face au dernier prix payé, pour chaque référence retrouvée sur une facture."),
+        ("Mercuriale contre facture", "Prix de la mercuriale (le tarif du fournisseur) face au dernier prix payé, pour chaque référence retrouvée sur une facture."),
         ("Évolutions", "Prix qui ont changé entre deux cadenciers d'un même fournisseur."),
         ("Sans équivalent", "Références lues mais comparées à rien, faute de produit équivalent chez un autre fournisseur."),
         ("Fond jaune", "« Mois entre les prix » supérieur à 3 : les prix comparés n'ont pas le même âge, le résultat est indicatif. « Prix à vérifier » : unité non confirmée par une facture. « Offres expirées » : prix lu sur une offre dont la fin de validité est passée."),
@@ -486,7 +475,7 @@ def main():
         ("Résultat solide", "Prix à 3 mois d'écart au plus, aucune offre expirée, aucune unité à vérifier. Mêmes règles que la page interactive."),
         ("Prix retenu", f"Le prix du cadencier, ou celui de la dernière facture hors promotion si elle est plus récente et à moins de {SEUIL_UNITE:.0%} du cadencier. Plus loin, la facture est sans doute dans une autre unité : son prix n'est pas retenu et la note de lecture le signale."),
         ("Non comparable", "Produit affiché pour mémoire, jamais compté dans le bilan."),
-        ("Tableur", "Ce classeur s'ouvre dans Excel, LibreOffice ou Google Sheets. Pour Google Sheets : dans Google Drive, Nouveau, Importer un fichier, l'ouvrir, puis Fichier, Enregistrer au format Google Sheets. Pour une mise à jour, dans la feuille Google : Fichier, Importer, Remplacer la feuille de calcul, ce qui garde la même adresse. Avant, télécharger la feuille au format Excel pour que Claude reprenne ce qui y a été saisi : sinon le remplacement l'efface."),
+        ("Tableur", "Ce classeur s'ouvre dans Excel, LibreOffice ou Google Sheets. Pour Google Sheets : dans Google Drive, Nouveau, Importer un fichier, l'ouvrir, puis Fichier, Enregistrer au format Google Sheets. Pour une mise à jour, dans la feuille Google : Fichier, Importer, Remplacer la feuille de calcul, ce qui garde la même adresse. Une correction faite à la main dans le classeur est perdue à la mise à jour : la signaler à Claude pour qu'il la reporte dans ses fichiers."),
         ("Limites", "Les correspondances entre produits ont été proposées par Claude et restent à valider. Quand un document ne porte pas de date, c'est celle du fichier qui est utilisée. Ce sont des prix HT, hors franco, remises de fin d'année et frais de livraison."),
     ]
     for i, (k, v) in enumerate(lignes, 3):
@@ -503,7 +492,7 @@ def main():
         print("ATTENTION : fonctions peut-être absentes de Google Sheets : " + ", ".join(hors_liste))
     wb.save(SORTIE)
     print(f"{len(produits)} produits, {n} fournisseurs, {dern_d - 1} lignes de détail, "
-          f"mercuriale de {nb_merc} références, cadencier de {nb_cad} références achetées -> {SORTIE.name}")
+          f"mercuriale de {nb_merc} références -> {SORTIE.name}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 ---
 name: comparer-cadenciers
-description: Compare les prix des fournisseurs d'un restaurant ou d'un commerce à partir de leurs cadenciers (PDF ou Excel), ramène tout au kg ou au litre, contrôle sur les factures et produit un classeur (Excel, LibreOffice ou Google Sheets) et une page interactive en couleurs, avec une mercuriale de tous les fournisseurs et un cadencier de commande (stocks, consommations, jours de livraison, quantités à commander). À utiliser quand l'utilisateur dit « compare mes cadenciers », « comparatif fournisseurs », « quel fournisseur est le moins cher », « compare ces tarifs », « ajoute ce cadencier », « mets à jour le comparatif », « fais ma mercuriale », « cadencier de commande », « qu'est-ce que je dois commander », « mets à jour mes stocks », « je n'ai pas Excel », « mets-le dans Google Sheets », ou fournit plusieurs tarifs de fournisseurs à mettre en face.
+description: Compare les prix des fournisseurs d'un restaurant ou d'un commerce à partir de leurs cadenciers (PDF ou Excel), ramène tout au kg ou au litre, contrôle sur les factures et produit un classeur (Excel, LibreOffice ou Google Sheets) et une page interactive en couleurs, avec une mercuriale de tous les fournisseurs et une mercuriale contre facture (tarif face au dernier prix payé). À utiliser quand l'utilisateur dit « compare mes cadenciers », « comparatif fournisseurs », « quel fournisseur est le moins cher », « compare ces tarifs », « ajoute ce cadencier », « mets à jour le comparatif », « fais ma mercuriale », « mercuriale contre facture », « je n'ai pas Excel », « mets-le dans Google Sheets », ou fournit plusieurs tarifs de fournisseurs à mettre en face.
 ---
 
 # Comparer des cadenciers
@@ -40,7 +40,7 @@ Lancer `scripts/controler_factures.py <dossier>`, puis lire `controle_factures.c
 - un prix hors promotion à moins de 30 % du cadencier confirme son unité. Un petit écart signale un prix brut, un cadencier périmé ou une promotion ;
 - au-delà de 30 %, la facture est sans doute dans une autre unité (un carton pour une bouteille) : son prix n'est pas retenu, la ligne reste « à vérifier » et la note de lecture le dit.
 
-Le script écrit aussi `achats.csv` : chaque ligne achetée, avec sa quantité et sa date de livraison. Il sert au cadencier de commande.
+Le script écrit aussi `achats.csv` : chaque ligne achetée, avec sa quantité et sa date de livraison. Il donne le dernier prix payé de la mercuriale.
 
 Facture d'un format inconnu, PDF ou non : voir `references/nouveau-lecteur.md`. Une unité supposée par le lecteur (prix à la bouteille ou au colis, au litre ou au fût) reste « à vérifier » tant qu'aucune facture ne la confirme : le dire. Une quantité lue sans ambiguïté dans le libellé (`1L`, `500g`) est sûre.
 
@@ -62,18 +62,13 @@ Ne mettre que les produits présents chez au moins deux fournisseurs, avec une s
 
 Continuer sans attendre. Seule une personne du métier sait si deux produits se remplacent : tant qu'elle n'a pas validé les `equivalent` et `different`, annoncer le comparatif comme provisoire. Présenter cette liste à l'étape 6.
 
-## Étape 3 bis · Préparer la mercuriale et le cadencier de commande
+## Étape 3 bis · Préparer la mercuriale
 
-1. Lancer `scripts/preparer_cadencier.py <dossier>`. Il crée ou complète, sans jamais effacer une saisie :
-   - `fournisseurs.csv` : jours de livraison et livraisons par semaine déduits des factures, délai de commande (1 jour par défaut), franco. Compléter ce qu'un document donne : Sysco imprime ses « Jours de livraison » (`Ma J V` s'écrit `mar jeu ven`). Un jour suivi de `?` vient d'une seule livraison : le faire confirmer.
-   - `stocks.csv` : une ligne par référence achetée. Le client y met son stock et sa date, et peut y imposer une consommation par semaine (`conso_semaine`) quand l'estimation est fausse ou absente, ou un colisage (`colisage`).
-2. Écrire `familles.csv` (`fournisseur,ref,famille`) pour les références qui ne sont pas dans `appariements.csv`, avec les mêmes familles. Sinon elles restent « À classer » dans la mercuriale.
-3. La consommation par semaine s'estime sur les quantités achetées, rapportées à la période où l'on observe le fournisseur. Elle suppose que le stock ne bouge pas d'une livraison à l'autre : la faire valider. Avec une seule livraison et un rythme inconnu, elle reste à saisir.
-4. `securite_jours` dans `config.json` règle les jours de stock de sécurité (2 par défaut).
+Écrire `familles.csv` (`fournisseur,ref,famille`) pour les références qui ne sont pas dans `appariements.csv`, avec les mêmes familles. Sinon elles restent « À classer » dans la mercuriale.
 
 ## Étape 4 · Construire le classeur
 
-1. Lancer `scripts/comparer.py <dossier>`. Il ajoute les onglets Meilleurs prix (pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son conditionnement et son prix, rangés par fournisseur), Mercuriale (tous les fournisseurs, tous les tarifs, dernier prix payé, verdict du comparatif) et Cadencier de commande (consommation, livraisons, stock, quantité à commander arrondie au colis, montant estimé par fournisseur). Les cases en bleu se corrigent dans le tableur. Il refuse une référence absente, une unité incohérente ou mélangée, deux références d'un même fournisseur pour un produit, un type ou une `qte_forcee` illisibles : corriger `appariements.csv`.
+1. Lancer `scripts/comparer.py <dossier>`. Il ajoute les onglets Meilleurs prix (pour chaque produit comparable, le fournisseur le moins cher, avec sa référence, son conditionnement et son prix, rangés par fournisseur), Mercuriale (tous les fournisseurs, tous les tarifs, dernier prix payé, verdict du comparatif) et Mercuriale contre facture (le tarif face au dernier prix payé, pour chaque référence retrouvée sur une facture). Il refuse une référence absente, une unité incohérente ou mélangée, deux références d'un même fournisseur pour un produit, un type ou une `qte_forcee` illisibles : corriger `appariements.csv`.
 2. Lancer `scripts/calculer_classeur.py <dossier>/Comparatif-fournisseurs.xlsx`. Il répond `CALCULE`, `PAS_CALCULE` avec la raison, ou `PAS_DE_TABLEUR`. Les deux dernières réponses ne sont pas bloquantes. Si `tableur` vaut `google_sheets`, passer à l'étape 4 bis. S'il n'est pas encore choisi, reposer la question avant l'étape 6.
 3. Si le classeur a été calculé, vérifier qu'il n'a aucune erreur de formule. Expliquer ou corriger chaque écart supérieur à 50 %.
 
@@ -88,12 +83,12 @@ Quand le client a choisi Google Sheets, ou n'arrive pas à se connecter à Excel
    - **connecteur Google Drive** : créer le fichier avec le contenu du classeur en base64, type `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, sans désactiver la conversion. Le fichier devient directement une feuille Google ;
    - **sinon, le client le fait** : lui remettre le classeur et lui dire « Sur drive.google.com : Nouveau, Importer un fichier, choisir le classeur ».
 2. Ouvrir le fichier puis faire Fichier, Enregistrer au format Google Sheets, sauf s'il a été converti en route. La mise à jour par remplacement n'existe que sur une feuille Google.
-3. Vérifier que les onglets Comparatif et Cadencier de commande n'affichent aucune erreur (`#N/A`, `#ERROR!`, `#NAME?`).
+3. Vérifier que les onglets Comparatif, Meilleurs prix et Mercuriale n'affichent aucune erreur (`#N/A`, `#ERROR!`, `#NAME?`).
 4. Noter l'adresse de la feuille dans `config.json`, clé `google_sheets`. Cette clé, comme `artefact` et `tableur`, ne demande pas de reconstruire le classeur.
 
 Ne jamais saisir le mot de passe Google du client : il se connecte lui-même. La feuille contient ses prix négociés : la laisser privée, et ne la partager qu'avec les personnes qu'il désigne.
 
-Pour une mise à jour : reprendre d'abord les saisies de la feuille (voir « Commander ») : sans cela, la remplacer les efface. Reconstruire le classeur, puis, dans la feuille Google : Fichier, Importer, Importer, choisir le nouveau classeur, « Remplacer la feuille de calcul ». L'adresse reste la même.
+Pour une mise à jour : demander d'abord au client s'il a corrigé quelque chose à la main dans la feuille, car le remplacement l'efface, et le reporter dans ses fichiers. Reconstruire le classeur, puis, dans la feuille Google : Fichier, Importer, Importer, choisir le nouveau classeur, « Remplacer la feuille de calcul ». L'adresse reste la même.
 
 ## Étape 5 · Publier la page interactive
 
@@ -112,35 +107,13 @@ Dire simplement :
 - combien de lignes et de produits ont été comparés, et combien de références n'ont aucun équivalent chez un autre fournisseur ;
 - qui est le moins cher, en rappelant les limites, et que l'onglet Meilleurs prix donne la liste de ce qu'il vaut mieux acheter chez chacun ;
 - combien de résultats sont solides : prix à 3 mois d'écart au plus, au dixième de mois près, aucune offre expirée (une offre vaut jusqu'à son dernier jour inclus) et unités confirmées. Le classeur (colonne Résultat solide) et la page appliquent la même règle ;
-- les écarts entre cadencier et factures ;
+- les écarts de l'onglet Mercuriale contre facture : tarif face au dernier prix payé ;
 - la liste des correspondances à valider, à passer en revue avec le client.
 
 Corriger `appariements.csv` d'après ses réponses, mettre `provisoire` à `false` dans `config.json` une fois tout validé, puis relancer les étapes 4 et 5, à la même adresse.
 
 Ne pas présenter comme une économie certaine une comparaison de prix d'âges différents. Le franco, les remises de fin d'année et les frais de livraison ne sont pas dans les cadenciers.
 
-Pour le cadencier de commande, dire aussi quelles consommations sont estimées et sur combien de livraisons, quels fournisseurs n'ont pas de jours de livraison connus, et que les stocks sont à saisir. La page permet de saisir un stock et de voir tout de suite la quantité à commander. Ces saisies restent dans le navigateur : le bouton « Copier les stocks » les copie pour `stocks.csv`.
-
-## Commander
-
-Quand le client donne ses stocks (liste, photo d'inventaire, collage depuis la page) : les reporter dans `stocks.csv` avec la date, puis relancer les étapes 4 et 5.
-
-S'il les a saisis dans son tableur ou sur la page, lancer `scripts/reprendre_stocks.py <dossier> <fichier> [--date JJ/MM/AAAA]` avant de reconstruire le classeur :
-
-- Excel ou LibreOffice : inutile, `comparer.py` reprend tout seul le classeur du dossier avant de le refaire ;
-- Google Sheets : la feuille téléchargée (Fichier, Télécharger, Microsoft Excel), ou l'onglet Cadencier de commande relu avec le connecteur Google Sheets et recopié en CSV, ligne de titres et colonne cachée comprises ;
-- la page : le texte du bouton « Copier les stocks », enregistré en CSV. Il ne contient que les stocks tapés sur la page, avec leur date.
-
-Seules les cases que le client a changées sont reprises : la colonne cachée « Valeurs d'origine » garde ce que le classeur contenait à sa construction.
-
-- Stock, date, consommation et colisage vont dans `stocks.csv` ; livraisons par semaine et délai dans `fournisseurs.csv`, quand les lignes d'un fournisseur disent la même chose.
-- Un stock changé sans changer sa date prend celle de `--date`, sinon celle du jour. Un stock plus ancien que celui de `stocks.csv` n'est pas repris.
-- Une case vidée n'efface rien. La sécurité, commune à tout le cadencier, est seulement signalée.
-
-Lire tout le compte rendu au client : une valeur illisible (« 12 packs »), une date illisible, une référence inconnue, un stock plus ancien, un réglage différent selon les lignes ou un classeur d'une version précédente y sont signalés. Ces cas se règlent avec lui.
-
-Ensuite, donner par fournisseur les quantités à commander et le montant estimé. Rappeler le prochain jour de livraison et, quand un autre fournisseur est moins cher sur un produit, le signaler sans changer la commande. Ne jamais passer la commande soi-même.
-
 ## Mettre à jour
 
-Pour un nouveau cadencier, l'ajouter à `sources.csv` sans retirer l'ancien : le plus récent sert au comparatif, et l'onglet Évolutions montre les changements, au kg ou au litre quand c'est possible. Une référence écrite avec ou sans ses zéros en tête (`0002641`, `2641`) reste la même. Si le client a saisi des stocks dans son tableur, les reprendre d'abord (voir « Commander »). Relancer les étapes 1, 2, 3 bis, 4 et 5, et 4 bis s'il travaille dans Google Sheets. Pour de nouvelles factures, les déposer dans `factures/` : les consommations s'affinent à chaque livraison.
+Pour un nouveau cadencier, l'ajouter à `sources.csv` sans retirer l'ancien : le plus récent sert au comparatif, et l'onglet Évolutions montre les changements, au kg ou au litre quand c'est possible. Une référence écrite avec ou sans ses zéros en tête (`0002641`, `2641`) reste la même. Relancer les étapes 1, 2, 3 bis, 4 et 5, et 4 bis s'il travaille dans Google Sheets. Pour de nouvelles factures, les déposer dans `factures/` : le dernier prix payé se met à jour.

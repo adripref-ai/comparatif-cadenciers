@@ -51,7 +51,7 @@ Marquer « à vérifier » toute unité supposée : prix peut-être à la boutei
 
 ## 3. Facture d'un format inconnu
 
-Ajouter à `lecteurs_client.py` une fonction qui prend un chemin et renvoie `None` si la facture n'est pas de ce fournisseur, sinon `(fournisseur, "AAAA-MM-JJ", [(ref, libellé, prix, promo, qte, date_livraison, unite, colisage), ...])`. Les quatre derniers champs sont facultatifs mais servent au cadencier de commande : `qte` est la quantité achetée dans l'unité du prix, `date_livraison` la date de la livraison quand une facture en regroupe plusieurs, `colisage` le nombre d'unités par colis. Ignorer les avoirs. Elle reçoit tous les fichiers du dossier des factures, PDF ou non (CSV, Excel, image) : renvoyer `None` pour ceux qu'elle ne sait pas lire.
+Ajouter à `lecteurs_client.py` une fonction qui prend un chemin et renvoie `None` si la facture n'est pas de ce fournisseur, sinon `(fournisseur, "AAAA-MM-JJ", [(ref, libellé, prix, promo, qte, date_livraison, unite, colisage), ...])`. Les quatre derniers champs sont facultatifs : `qte` est la quantité achetée dans l'unité du prix, `date_livraison` la date de la livraison quand une facture en regroupe plusieurs, `colisage` le nombre d'unités par colis. Ignorer les avoirs. Elle reçoit tous les fichiers du dossier des factures, PDF ou non (CSV, Excel, image) : renvoyer `None` pour ceux qu'elle ne sait pas lire.
 
 ```python
 FACTURES = [lire_facture_mon_fournisseur]
