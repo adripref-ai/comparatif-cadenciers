@@ -152,11 +152,17 @@ def main():
         if cle not in recent or t["date_tarif"] > recent[cle]["date_tarif"]:
             recent[cle] = t
 
-    sortie = []
+    sortie, historique = [], []
     for (four, ref), t in recent.items():
         lignes = achats.get((four, ref))
         if not lignes:
             continue
+        # Chaque prix payé, ramené à l'unité de prix du cadencier le plus récent, pour l'onglet Historique
+        for quand_, prix_, promo_, fichier_, unite_ in sorted(set(lignes)):
+            f_ = facteur_facture(t, unite_)
+            historique.append(dict(fournisseur=four, ref=t["ref"], date=quand_, prix_facture=prix_, unite_facture=unite_,
+                                   facteur=f_, prix_ramene=round(prix_ * f_, 4), promo=int(bool(promo_)),
+                                   facture=fichier_))
         # Deux prix le même jour : on garde le plus haut, pour ne pas embellir le résultat
         quand, prix, promo, fichier, unite = max(lignes, key=lambda x: x[:2])
         cad = float(t["prix"])
@@ -184,6 +190,12 @@ def main():
         w = csv.DictWriter(f, champs)
         w.writeheader()
         w.writerows(sortie)
+
+    with open(ICI / "historique_factures.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, ["fournisseur", "ref", "date", "prix_facture", "unite_facture", "facteur", "prix_ramene",
+                               "promo", "facture"])
+        w.writeheader()
+        w.writerows(sorted(historique, key=lambda x: (x["fournisseur"], cle_ref(x["ref"]), x["date"])))
 
     print("Factures lues :", dict(compte))
     if inconnues:

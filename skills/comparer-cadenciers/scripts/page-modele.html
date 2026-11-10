@@ -142,7 +142,7 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
     <button role="tab" id="o-valider" aria-selected="false" data-v="valider">À valider</button>
     <button role="tab" id="o-mercuriale" aria-selected="false" data-v="mercuriale">Mercuriale</button>
     <button role="tab" id="o-factures" aria-selected="false" data-v="factures">Mercuriale contre facture</button>
-    <button role="tab" id="o-evolutions" aria-selected="false" data-v="evolutions">Évolutions</button>
+    <button role="tab" id="o-historique" aria-selected="false" data-v="historique">Historique</button>
   </div>
 
   <section class="vue" id="v-produits">
@@ -195,9 +195,15 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
     <div class="tableau defile"><table><thead><tr><th>Fournisseur</th><th>Produit</th><th class="r">Mercuriale</th><th>Du</th><th class="r">Facture</th><th>Du</th><th class="r">Écart</th><th>Achats</th></tr></thead><tbody id="ftab"></tbody></table></div>
   </section>
 
-  <section class="vue" id="v-evolutions" hidden>
-    <p class="meta">Les prix qui ont changé entre deux cadenciers d'un même fournisseur.</p>
-    <div id="evo"></div>
+  <section class="vue" id="v-historique" hidden>
+    <p class="meta">Chaque prix connu d'une référence, cadenciers et factures, dans l'ordre des dates. L'évolution se lit au kg, au litre ou à l'unité, du premier prix au dernier.</p>
+    <div class="outils">
+      <input type="search" id="hq" placeholder="Chercher une référence" aria-label="Chercher une référence">
+      <select id="hfo" aria-label="Fournisseur"></select>
+      <label class="case"><input type="checkbox" id="hhausse"> Seulement les hausses</label>
+      <span class="compte" id="hcompte"></span>
+    </div>
+    <div id="histo"></div>
   </section>
 
   <p class="limites">Prix HT, hors franco, remises de fin d'année et frais de livraison. Quand une facture est plus récente que le cadencier, son prix hors promotion est retenu. Les correspondances entre produits sont validées par une personne du métier (vue À valider). Mêmes chiffres que le classeur, qui liste aussi les références sans équivalent.</p>
@@ -282,7 +288,7 @@ function carte(p) {
   } else verdict = '';
   const lignes = p.offres.map(o => `<tr>
       <td><span class="point" style="${couleur(o.f)}"></span>${esc(o.f)}</td>
-      <td>${esc(o.lib)}<br><small>Réf. ${esc(o.ref)}</small></td>
+      <td>${esc(o.lib)}<br><small>Réf. ${esc(o.ref)}${o.hist != null ? ` · ${o.hist > 0 ? '+' : ''}${eur(o.hist * 100, 1)} % depuis son premier prix` : ''}</small></td>
       <td class="r">${eur(o.cad, 3)} €/${esc(o.uc)}</td><td>${jour(o.dcad)}</td>
       <td class="r">${o.fac == null ? '' : eur(o.fac, 3) + ' €'}</td><td>${jour(o.dfac)}</td>
       <td class="r">${eur(o.pu)}</td><td>${esc(o.origine)}</td>
@@ -333,12 +339,16 @@ function dessinerFactures() {
   }).join('') || '<tr><td colspan="8">Aucune facture retrouvée pour ce choix.</td></tr>';
 }
 
-function dessinerEvolutions() {
-  if (!D.evolutions.length) { $('evo').innerHTML = '<div class="vide">Il faut deux cadenciers d\'un même fournisseur pour voir des évolutions.</div>'; return; }
-  $('evo').innerHTML = `<div class="tableau defile"><table><thead><tr><th>Fournisseur</th><th>Produit</th><th class="r">Ancien prix</th><th>Du</th><th class="r">Nouveau prix</th><th>Du</th><th class="r">Évolution</th></tr></thead><tbody>` +
-    D.evolutions.map(x => `<tr><td><span class="point" style="${couleur(x.f)}"></span>${esc(x.f)}</td><td>${esc(x.lib)}</td>
-      <td class="r">${eur(x.avant, 3)}</td><td>${jour(x.davant)}</td><td class="r">${eur(x.apres, 3)}</td><td>${jour(x.dapres)}</td>
-      <td class="r"><span class="tag ${x.ecart < 0 ? 'ok' : 'bad'}">${x.ecart > 0 ? '+' : ''}${eur(x.ecart * 100, 1)} %</span></td></tr>`).join('') + '</tbody></table></div>';
+function dessinerHistorique() {
+  const q = $('hq').value.trim().toLowerCase(), f = $('hfo').value, hausse = $('hhausse').checked;
+  const l = (D.historique || []).filter(x => (!q || (x.lib + ' ' + x.prod + ' ' + x.ref).toLowerCase().includes(q)) &&
+    (!f || x.f === f) && (!hausse || x.ecart > 0));
+  $('hcompte').textContent = `${l.length} référence${l.length > 1 ? 's' : ''}`;
+  if (!l.length) { $('histo').innerHTML = '<div class="vide">Aucune référence vue à deux dates : il faut deux cadenciers, ou des factures, pour suivre un prix.</div>'; return; }
+  $('histo').innerHTML = `<div class="tableau defile"><table><thead><tr><th>Référence</th><th>Prix dans le temps</th><th class="r">Évolution</th></tr></thead><tbody>` +
+    l.map(x => `<tr><td>${esc(x.lib)}<br><small><span class="point" style="${couleur(x.f)}"></span>${esc(x.f)} · Réf. ${esc(x.ref)}${x.prod ? ' · ' + esc(x.prod) : ''}</small></td>
+      <td><small>${x.pts.map(p => `${jour(p.d)} : <b>${p.pu != null ? eur(p.pu) + ' ' + esc(x.u) : eur(p.prix, 3) + ' €/' + esc(p.up)}</b> ${p.o === 'Facture' ? '(facture' + (p.promo ? ', promo' : '') + ')' : ''}`).join('<br>')}</small></td>
+      <td class="r">${x.ecart == null ? '' : `<span class="tag ${x.ecart < 0 ? 'ok' : x.ecart > 0 ? 'bad' : 'neutre'}">${x.ecart > 0 ? '+' : ''}${eur(x.ecart * 100, 1)} %</span>`}</td></tr>`).join('') + '</tbody></table></div>';
 }
 
 function dessinerMercuriale() {
@@ -397,7 +407,7 @@ document.querySelector('.bilan').addEventListener('click', e => {
 });
 document.querySelector('.onglets').addEventListener('click', e => { const b = e.target.closest('button'); if (b) montrer(b.dataset.v); });
 function montrer(v) {
-  for (const n of ['produits', 'valider', 'mercuriale', 'factures', 'evolutions']) {
+  for (const n of ['produits', 'valider', 'mercuriale', 'factures', 'historique']) {
     $('v-' + n).hidden = n !== v;
     $('o-' + n).setAttribute('aria-selected', n === v);
   }
@@ -413,6 +423,8 @@ $('ffo').innerHTML = '<option value="">Tous les fournisseurs</option>' + [...new
 const options = (l, tous) => `<option value="">${tous}</option>` + [...new Set(l)].map(f => `<option>${esc(f)}</option>`).join('');
 $('mfam').innerHTML = options((D.mercuriale || []).map(x => x.fam), 'Toutes les familles');
 $('mfo').innerHTML = options((D.mercuriale || []).map(x => x.f), 'Tous les fournisseurs');
+$('hfo').innerHTML = options(D.historique.map(x => x.f), 'Tous les fournisseurs');
+['hq', 'hfo', 'hhausse'].forEach(i => $(i).addEventListener('input', dessinerHistorique));
 ['mq', 'mfam', 'mfo', 'machat'].forEach(i => $(i).addEventListener('input', dessinerMercuriale));
-rafraichir(); dessinerFactures(); dessinerEvolutions(); dessinerMercuriale(); dessinerValidation();
+rafraichir(); dessinerFactures(); dessinerHistorique(); dessinerMercuriale(); dessinerValidation();
 </script>

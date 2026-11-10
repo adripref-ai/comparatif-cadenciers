@@ -1,4 +1,4 @@
-"""Mercuriale, tirée des tarifs et du contrôle des factures (controle_factures.csv).
+"""Mercuriale et Historique, tirés des tarifs et des factures (controle_factures.csv, historique_factures.csv).
 
 La mercuriale met tous les fournisseurs et tous leurs tarifs dans un seul tableau, avec le dernier
 prix payé sur facture et le verdict du comparatif.
@@ -110,3 +110,74 @@ def ajouter_onglets(wb, ici, recent, produits, outils, comparatif):
         wm.conditional_formatting.add(f"N2:N{dern_m}", FormulaRule(formula=['$N2="expirée"'],
                                       fill=PatternFill("solid", bgColor="FEF3C7")))
     return len(recent)
+
+
+def ajouter_historique(wb, ici, tarifs, recent, produits, outils):
+    """Ajoute l'onglet Historique : chaque prix connu d'une référence, cadencier ou facture, dans l'ordre des dates.
+    Seules les références vues à au moins deux dates y figurent. Renvoie le nombre de références suivies."""
+    entete, habiller, jour = outils["entete"], outils["habiller"], outils["jour"]
+    Font, PatternFill, FormulaRule, L = outils["Font"], outils["PatternFill"], outils["FormulaRule"], outils["L"]
+    nom_produit = {(a["fournisseur"], cle_ref(a["ref"])): nom for nom, p in produits.items() for a, _t in p["lignes"]}
+    points = {}
+
+    def ajouter(cle, point):
+        # Deux documents du même jour au même prix ne font qu'un relevé
+        date_, origine, _doc, prix, up = point[:5]
+        points.setdefault(cle, {}).setdefault((date_, origine, prix, up), point)
+
+    for t in tarifs:
+        pu = float(t["prix_unitaire"]) if t["prix_unitaire"] else None
+        ajouter((t["fournisseur"], cle_ref(t["ref"])),
+                (t["date_tarif"], "Cadencier", t["document"], float(t["prix"]), t["unite_prix"].replace("€/", ""), pu,
+                 t["unite"], ""))
+    for x in lire_csv(Path(ici) / "historique_factures.csv"):
+        cle = (x["fournisseur"], cle_ref(x["ref"]))
+        t = recent.get(cle)
+        if not t:
+            continue
+        prix = float(x["prix_ramene"])
+        pu = round(prix / float(t["qte"]), 4) if t["qte"] else None
+        ajouter(cle, (x["date"], "Facture", x["facture"], prix, t["unite_prix"].replace("€/", ""),
+                      pu, t["unite"], "oui" if x["promo"] == "1" else ""))
+    suivis = sorted(((cle, sorted(pts.values(), key=lambda p: p[:4])) for cle, pts in points.items()
+                     if len({p[0] for p in pts.values()}) >= 2 and cle in recent),
+                    key=lambda kv: (kv[0][0], recent[kv[0]]["libelle"]))
+
+    wh = wb.create_sheet("Historique")
+    tit = ["Fournisseur", "Réf.", "Libellé", "Produit comparé", "Date", "Origine", "Document", "Prix HT", "Unité de prix",
+           "Prix par kg, litre ou unité", "Unité", "Promo", "Depuis le premier prix"]
+    entete(wh, 1, tit)
+    r = 2
+    gris = PatternFill("solid", fgColor="F1F3F5")
+    for k, (cle, pts) in enumerate(suivis):
+        t = recent[cle]
+        premier = None
+        for date_, origine, doc, prix, up, pu, unite, promo in pts:
+            valeurs = [cle[0], t["ref"], t["libelle"], nom_produit.get(cle, ""), jour(date_), origine, doc, prix, up, pu,
+                       unite, promo]
+            for c, v in enumerate(valeurs, 1):
+                wh.cell(r, c, v)
+            if premier is None and pu is not None:
+                premier = r
+            # L'évolution se lit au kg, au litre ou à l'unité : un pack et une bouteille ne se comparent pas au prix brut
+            wh.cell(r, 13, f'=IF(OR(J{r}="",J${premier}=""),"",J{r}/J${premier}-1)' if premier else None)
+            wh.cell(r, 5).number_format = "dd/mm/yyyy"
+            wh.cell(r, 8).number_format = "0.000"
+            wh.cell(r, 10).number_format = "0.00"
+            wh.cell(r, 13).number_format = "+0.0%;-0.0%;0.0%"
+            if k % 2:
+                for c in range(1, len(tit) + 1):
+                    wh.cell(r, c).fill = gris
+            r += 1
+    dern = r - 1
+    habiller(wh, 2, dern, len(tit))
+    for k, w in enumerate((20, 9, 42, 28, 11, 10, 28, 10, 9, 11, 7, 7, 12), 1):
+        wh.column_dimensions[L(k)].width = w
+    wh.freeze_panes = "D2"
+    if dern >= 2:
+        wh.auto_filter.ref = f"A1:{L(len(tit))}{dern}"
+        wh.conditional_formatting.add(f"M2:M{dern}", FormulaRule(formula=["AND(ISNUMBER($M2),$M2>0)"],
+                                      font=Font(bold=True, color="B3261E")))
+        wh.conditional_formatting.add(f"M2:M{dern}", FormulaRule(formula=["AND(ISNUMBER($M2),$M2<0)"],
+                                      font=Font(bold=True, color="1E7A3C")))
+    return len(suivis)

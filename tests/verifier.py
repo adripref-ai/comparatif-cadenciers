@@ -90,7 +90,9 @@ def creer_client(ici):
                ["Beta", jour(5), "12", "Crème 30 % 1 L", "3.80", "€/L", "1", "L"],
                ["Beta", jour(5), "13", "Sel de mer 1 kg", "2.00", "€/kg", "1", "kg"],
                ["Beta", jour(5), "14", "Sucre semoule 1 kg", "1.20", "€/kg", "1", "kg"]])
-    ecrire_csv(ici / "sources.csv", [["lecteur", "fichier", "date"],
+    ecrire_csv(ici / "cadenciers/alpha-ancien.csv", [entete,
+               ["Alpha", jour(100), "001", "Farine T55 25 kg", "18.00", "€/sac", "25", "kg"]])
+    ecrire_csv(ici / "sources.csv", [["lecteur", "fichier", "date"], ["essai", "cadenciers/alpha-ancien.csv", ""],
                ["essai", "cadenciers/alpha.csv", ""], ["essai", "cadenciers/beta.csv", ""]])
     ecrire_csv(ici / "factures/alpha-1.csv", [["fournisseur", "date", "ref", "libelle", "prix", "promo", "unite"],
                ["Alpha", jour(3), "1", "FARINE T55 25KG", "20.00", "0", "SAC"]])
@@ -112,6 +114,11 @@ def page(ici):
     html = (ici / "page-comparatif.html").read_text(encoding="utf-8")
     d = json.loads(re.search(r'id="donnees">(.*?)</script>', html, re.S).group(1).replace("<\\/", "</"))
     return {p["nom"]: p for p in d["produits"]}
+
+
+def page_historique(ici):
+    html = (ici / "page-comparatif.html").read_text(encoding="utf-8")
+    return json.loads(re.search(r'id="donnees">(.*?)</script>', html, re.S).group(1).replace("<\\/", "</"))["historique"]
 
 
 def decider(classeur, choix):
@@ -153,13 +160,25 @@ def main():
     p = reconstruire(ici)
     wb = openpyxl.load_workbook(classeur)
     verifier(wb.sheetnames == ["Lisez-moi", "À valider", "Comparatif", "Meilleurs prix", "Mercuriale", "Détail",
-                               "Mercuriale contre facture", "Évolutions", "Sans équivalent"], f"onglets : {wb.sheetnames}")
+                               "Mercuriale contre facture", "Historique", "Sans équivalent"], f"onglets : {wb.sheetnames}")
     verifier(p["Farine T55"]["gagnant"] == "Alpha" and p["Farine T55"]["solide"], f"Farine : {p['Farine T55']}")
     verifier(p["Beurre doux"]["gagnant"] == "non comparable", "Beurre doux devrait être non comparable")
     verifier(p["Crème liquide"]["type"] == "qualité différente" and p["Crème liquide"]["gagnant"] == "Beta",
              f"Crème : {p['Crème liquide']['type']} {p['Crème liquide']['gagnant']}")
     verifier(p["Sel fin"]["gagnant"] == "Alpha" and not p["Sel fin"]["solide"], "un écart de 100 % ne doit pas être solide")
     verifier(p["Sucre"]["ancien"] and not p["Sucre"]["solide"], "un prix de plus de 6 mois ne doit pas être solide")
+    # Historique : la farine Alpha passe de 18 € à 20 € le sac de 25 kg, puis une facture à 20 €
+    hist = [r for r in openpyxl.load_workbook(classeur, data_only=False)["Historique"].iter_rows(min_row=2, values_only=True)
+            if r[0] == "Alpha" and r[1] == "001"]
+    verifier([r[5] for r in hist] == ["Cadencier", "Cadencier", "Facture"], f"historique de la farine Alpha : {hist}")
+    verifier(all(str(r[12]).startswith("=") for r in hist), "l'évolution de l'historique doit être une formule")
+    h = {(x["f"], x["ref"]): x for x in page_historique(ici)}
+    farine = h.get(("Alpha", "001"))
+    verifier(farine and abs(farine["ecart"] - 0.8 / 0.72 + 1) < 1e-6, f"évolution de la farine Alpha sur la page : {farine}")
+    offre = next(o for o in p["Farine T55"]["offres"] if o["f"] == "Alpha")
+    verifier(offre["hist"] is not None and abs(offre["hist"] - 0.8 / 0.72 + 1) < 1e-6,
+             f"l'offre Alpha de la farine devrait montrer son évolution : {offre.get('hist')}")
+    verifier(("Beta", "13") not in h, "une référence vue à une seule date ne doit pas être dans l'historique")
     formule = next(c.value for row in wb["Comparatif"].iter_rows() for c in row
                    if isinstance(c.value, str) and c.value.startswith("=") and "À valider" in c.value)
     verifier("MATCH(" in formule, "le Type doit chercher la décision par le nom du produit : " + formule[:120])
@@ -246,6 +265,14 @@ def main():
                 verifier(x["Moins cher"] == attendu["gagnant"], f"{row[0]} : classeur {x['Moins cher']}, page {attendu['gagnant']}")
                 verifier((x["Résultat solide"] == "oui") == attendu["solide"], f"{row[0]} : solide différent entre classeur et page")
                 verifier(x["Type"] == attendu["type"], f"{row[0]} : type différent entre classeur et page")
+            derniere = {}
+            for r in wb["Historique"].iter_rows(min_row=2, values_only=True):
+                if r[0]:
+                    derniere[(r[0], r[1])] = r[12]
+            for x in page_historique(ici):
+                if x["ecart"] is not None:
+                    verifier(abs((derniere.get((x["f"], x["ref"])) or 0) - x["ecart"]) < 1e-6,
+                             f"historique {x['f']} {x['ref']} : classeur {derniere.get((x['f'], x['ref']))}, page {x['ecart']}")
         else:
             print("Calcul impossible ici, comparaison classeur et page sautée : " + reponse.strip())
 

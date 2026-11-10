@@ -22,7 +22,7 @@ from openpyxl.utils import get_column_letter as L
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from lecteurs import AGE_MAX_JOURS, ECART_MAX, SEUIL_UNITE, cle_ref, nombre, unite_confirmee
-from suivi import ajouter_onglets, fonctions_incompatibles
+from suivi import ajouter_historique, ajouter_onglets, fonctions_incompatibles
 from validations import (CHOIX, COL_ECRIT_COM, COL_ECRIT_DEC, LIBELLE_TYPE, ONGLET, TYPES, choix_non_reportes,
                          etat, refuser_si_ouvert)
 
@@ -453,44 +453,6 @@ def main():
     wf.freeze_panes = "A2"
     wf.auto_filter.ref = f"A1:{L(len(titres))}{len(controle) + 1}"
 
-    # ---------- Évolutions entre deux cadenciers d'un même fournisseur ----------
-    we = wb.create_sheet("Évolutions")
-    titres = ["Fournisseur", "Réf.", "Libellé", "Ancien cadencier", "Ancien prix", "Nouveau cadencier", "Nouveau prix",
-              "Évolution", "Unité"]
-    entete(we, 1, titres)
-    groupes = {}
-    for t in tarifs:
-        groupes.setdefault((t["fournisseur"], cle_ref(t["ref"])), []).append(t)
-    i = 2
-    for (four, ref), g in sorted(groupes.items()):
-        if len(g) < 2:
-            continue
-        g.sort(key=lambda x: x["date_tarif"])
-        avant, apres = g[0], g[-1]
-        # On compare au kg ou au litre quand c'est possible : un pack et une bouteille ne se comparent pas au prix brut
-        if avant["prix_unitaire"] and apres["prix_unitaire"] and avant["unite"] == apres["unite"]:
-            v0, v1, unite = float(avant["prix_unitaire"]), float(apres["prix_unitaire"]), "€/" + apres["unite"]
-        elif avant["unite_prix"] == apres["unite_prix"]:
-            v0, v1, unite = float(avant["prix"]), float(apres["prix"]), apres["unite_prix"]
-        else:
-            continue
-        if round(v0, 4) == round(v1, 4):
-            continue
-        we.cell(i, 1, four)
-        we.cell(i, 2, apres["ref"])
-        we.cell(i, 3, apres["libelle"])
-        we.cell(i, 4, jour(avant["date_tarif"])).number_format = "dd/mm/yyyy"
-        we.cell(i, 5, v0).number_format = "0.000"
-        we.cell(i, 6, jour(apres["date_tarif"])).number_format = "dd/mm/yyyy"
-        we.cell(i, 7, v1).number_format = "0.000"
-        we.cell(i, 8, f"=(G{i}-E{i})/E{i}").number_format = "+0.0%;-0.0%;0.0%"
-        we.cell(i, 9, unite)
-        i += 1
-    habiller(we, 2, i - 1, len(titres))
-    for k, w in enumerate((21, 9, 44, 12, 10, 12, 10, 10, 9), 1):
-        we.column_dimensions[L(k)].width = w
-    we.freeze_panes = "A2"
-
     # ---------- Références sans équivalent ----------
     ws = wb.create_sheet("Sans équivalent")
     titres = ["Fournisseur", "Réf.", "Libellé", "Prix HT", "Unité de prix", "Prix par kg ou litre", "Unité", "Date du tarif"]
@@ -514,10 +476,12 @@ def main():
     ws.auto_filter.ref = f"A1:H{max(len(seuls) + 1, 2)}"
 
     # ---------- Mercuriale ----------
-    outils = dict(entete=entete, habiller=habiller, jour=jour, PatternFill=PatternFill,
+    outils = dict(entete=entete, habiller=habiller, jour=jour, Font=Font, PatternFill=PatternFill,
                   FormulaRule=FormulaRule, L=L)
     comp = dict(premiere=premiere, dern=dern, moins_cher=L(cm)) if dern >= premiere else None
     nb_merc = ajouter_onglets(wb, ICI, recent, produits, outils, comp)
+    nb_hist = ajouter_historique(wb, ICI, tarifs, recent, produits, outils)
+    wb.move_sheet("Historique", wb.sheetnames.index("Mercuriale contre facture") + 1 - wb.sheetnames.index("Historique"))
     # Meilleurs prix juste après le Comparatif, qu'il résume
     wb.move_sheet("Meilleurs prix", wb.sheetnames.index("Comparatif") + 1 - wb.sheetnames.index("Meilleurs prix"))
 
@@ -614,7 +578,7 @@ def main():
         ("Mercuriale", "Tous les fournisseurs et tous leurs tarifs dans un seul tableau, classés par famille, avec le dernier prix payé (ramené à l'unité de prix du tarif) et le verdict du comparatif."),
         ("Détail", "D'où vient chaque prix : libellé, date, quantité, facture. Les prix en bleu se corrigent à la main, le reste suit."),
         ("Mercuriale contre facture", "Prix de la mercuriale (le tarif du fournisseur) face au dernier prix payé, pour chaque référence retrouvée sur une facture. Quand la facture compte dans une autre unité (au kg pour une pièce de 1,4 kg, à la brique pour un pack de 6), le tarif est ramené à l'unité facturée : la colonne Note le dit."),
-        ("Évolutions", "Prix qui ont changé entre deux cadenciers d'un même fournisseur."),
+        ("Historique", "Chaque prix connu d'une référence, dans l'ordre des dates : ceux de tous les cadenciers et ceux de toutes les factures, ramenés à l'unité de prix du cadencier le plus récent. Seules les références vues à au moins deux dates y figurent. « Depuis le premier prix » se calcule au kg, au litre ou à l'unité : en rouge une hausse, en vert une baisse. Filtrer, mais ne pas trier."),
         ("Sans équivalent", "Références lues mais comparées à rien, faute de produit équivalent chez un autre fournisseur."),
         ("Fond jaune", "« Mois entre les prix » supérieur à 3 : les prix comparés n'ont pas le même âge, le résultat est indicatif. « Prix à vérifier » : unité non confirmée par une facture. « Offres expirées » : prix lu sur une offre dont la fin de validité est passée. Dans l'onglet À valider : décision encore à prendre."),
         ("Fond orange", "Écart supérieur à 50 % : souvent une erreur d'unité ou deux produits différents, à contrôler avant de s'y fier. Type ou Comparaison « qualité différente » : le moins cher n'est pas tout à fait le même produit. Dans l'onglet À valider : le client a choisi autre chose que Claude (en vert : il a confirmé la proposition)."),
@@ -640,7 +604,7 @@ def main():
         print("ATTENTION : fonctions peut-être absentes de Google Sheets : " + ", ".join(hors_liste))
     wb.save(SORTIE)
     print(f"{len(produits)} produits, {n} fournisseurs, {dern_d - 1} lignes de détail, "
-          f"mercuriale de {nb_merc} références -> {SORTIE.name}")
+          f"mercuriale de {nb_merc} références, historique de {nb_hist} références -> {SORTIE.name}")
 
 
 if __name__ == "__main__":

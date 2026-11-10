@@ -18,7 +18,7 @@ import openpyxl
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).parent))
-from lecteurs import AGE_MAX_JOURS, ECART_MAX  # noqa: E402
+from lecteurs import AGE_MAX_JOURS, ECART_MAX, cle_ref  # noqa: E402
 from validations import CHOIX, DECISIONS, LIBELLE_TYPE, ONGLET, choix_non_reportes, decision_type, etat  # noqa: E402
 
 ICI = Path(__file__).parent
@@ -62,7 +62,7 @@ def main():
     if not classeur.exists():
         sys.exit("Classeur absent : lancer comparer.py d'abord.")
     wb = openpyxl.load_workbook(classeur)
-    noms = ["tarifs.csv", "appariements.csv", "controle_factures.csv", "familles.csv"]
+    noms = ["tarifs.csv", "appariements.csv", "controle_factures.csv", "historique_factures.csv", "familles.csv"]
     try:  # comparer.py note dans le classeur les réglages de config.json qu'il a utilisés
         utilise = json.loads(wb.properties.keywords or "")
         if any(config.get(k) != v for k, v in utilise.items()):
@@ -155,10 +155,20 @@ def main():
                      promo=x["Promo"] == "oui", n=x["Nombre d'achats"], note=x.get("Note") or "")
                 for x in table(wb["Mercuriale contre facture"], 1)]
     factures.sort(key=lambda x: -abs(x["ecart"]))
-    evolutions = [dict(f=x["Fournisseur"], lib=x["Libellé"], avant=x["Ancien prix"], davant=jour(x["Ancien cadencier"]),
-                       apres=x["Nouveau prix"], dapres=jour(x["Nouveau cadencier"]),
-                       ecart=(x["Nouveau prix"] - x["Ancien prix"]) / x["Ancien prix"])
-                  for x in table(wb["Évolutions"], 1)]
+    # Historique : une entrée par référence suivie, ses prix dans l'ordre des dates, l'évolution au kg ou au litre
+    historique = {}
+    for x in table(wb["Historique"], 1):
+        cle = (x["Fournisseur"], cle_ref(x["Réf."]))
+        h = historique.setdefault(cle, dict(f=x["Fournisseur"], ref=str(x["Réf."]), lib=x["Libellé"],
+                                            prod=x["Produit comparé"] or "", u=x["Unité"] or "", pts=[]))
+        h["pts"].append(dict(d=jour(x["Date"]), o=x["Origine"], prix=x["Prix HT"], up=x["Unité de prix"] or "",
+                             pu=x["Prix par kg, litre ou unité"], promo=x["Promo"] == "oui"))
+    for h in historique.values():
+        avec_pu = [p for p in h["pts"] if isinstance(p["pu"], (int, float))]
+        h["ecart"] = avec_pu[-1]["pu"] / avec_pu[0]["pu"] - 1 if len(avec_pu) >= 2 and avec_pu[0]["pu"] else None
+    for p in produits:
+        for o in p["offres"]:
+            o["hist"] = historique.get((o["f"], cle_ref(o["ref"])), {}).get("ecart")
 
     # Mercuriale : valeurs du classeur, verdict repris du comparatif ci-dessus
     gagnants = {p["nom"]: p["gagnant"] for p in produits}
@@ -180,7 +190,7 @@ def main():
                 gagnant=gagnants.get(x["Produit comparé"] or "", "")))
 
     # Un fournisseur vu sur une facture mais absent du comparatif garde quand même sa couleur
-    tous = fournisseurs + sorted({x["f"] for x in factures + evolutions + mercuriale} - set(fournisseurs))
+    tous = fournisseurs + sorted({x["f"] for x in factures + list(historique.values()) + mercuriale} - set(fournisseurs))
     teintes, libres = [], iter(PALETTE * 3)
     for f in tous:
         teintes.append(COULEURS.get(f) or next(libres))
@@ -188,7 +198,7 @@ def main():
     sombre = " ".join(f"--f{i}:{c[1]};" for i, c in enumerate(teintes))
 
     donnees = dict(client=client, provisoire=config.get("provisoire", True), fournisseurs=tous, produits=produits,
-                   factures=factures, evolutions=evolutions, mercuriale=mercuriale)
+                   factures=factures, historique=list(historique.values()), mercuriale=mercuriale)
     texte = json.dumps(donnees, ensure_ascii=False).replace("</", "<\\/")
     page = (ICI / "page-modele.html").read_text(encoding="utf-8")
     page = (page.replace("__TITRE__", escape(f"Comparatif {client}"))
