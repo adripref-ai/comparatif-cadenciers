@@ -62,7 +62,7 @@ Commencer par ce que le client achète vraiment, d'après les factures, ou à d�
 
 Ne mettre que les produits présents chez au moins deux fournisseurs, avec une seule référence par fournisseur et par produit. Les autres apparaissent d'eux-mêmes dans l'onglet Sans équivalent du classeur. `type` et `note` se lisent sur la première ligne de chaque produit. Si très peu de produits se recoupent, le dire clairement : c'est un résultat, pas une erreur. Avec aucun produit commun, le classeur est quand même produit, avec l'onglet Sans équivalent.
 
-Continuer sans attendre. Seule une personne du métier sait si deux produits se valent : tant qu'elle n'a pas validé les `equivalent`, `qualite` et `different`, annoncer le comparatif comme provisoire. Elle tranche à l'étape 7, dans l'onglet À valider du classeur.
+Continuer sans attendre. Seule une personne du métier sait si deux produits se valent : tant qu'elle n'a pas validé les `qualite` et `different`, annoncer le comparatif comme provisoire. Un `identique` ou un `equivalent` ne se valide pas : c'est le même produit. Pour un `equivalent`, la page affiche « Conditionnement différent » et la note : y écrire la différence de conditionnement (« sachet de 1 kg chez l'un, de 500 g chez l'autre »), rien d'autre. Elle tranche à l'étape 7, dans l'onglet À valider du classeur.
 
 ## Étape 3 bis · Préparer la mercuriale
 

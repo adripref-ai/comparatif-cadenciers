@@ -23,7 +23,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 from lecteurs import AGE_MAX_JOURS, ECART_MAX, SEUIL_UNITE, cle_ref, nombre, unite_confirmee
 from suivi import ajouter_historique, ajouter_onglets, fonctions_incompatibles
-from validations import (CHOIX, COL_ECRIT_COM, COL_ECRIT_DEC, LIBELLE_TYPE, ONGLET, TYPES, choix_non_reportes,
+from validations import (CHOIX, COL_ECRIT_COM, COL_ECRIT_DEC, LIBELLE_TYPE, ONGLET, SANS_VALIDATION, TYPES, choix_non_reportes,
                          etat, refuser_si_ouvert)
 
 ICI = None
@@ -252,8 +252,8 @@ def main():
     r = premiere
     familles = list(OrderedDict.fromkeys(p["famille"] for p in produits.values()))
     ordre = sorted(produits.items(), key=lambda kv: (familles.index(kv[1]["famille"]), kv[1]["type"] == "different"))
-    # Onglet À valider : d'abord ce qui reste à trancher, puis ce qui est tranché, puis les produits identiques
-    a_valider = sorted(ordre, key=lambda kv: (2 if kv[1]["type"] == "identique" and not kv[1]["decision"]
+    # Onglet À valider : d'abord ce qui reste à trancher, puis ce qui est tranché, puis ceux qui ne demandent pas de décision
+    a_valider = sorted(ordre, key=lambda kv: (2 if kv[1]["type"] in SANS_VALIDATION and not kv[1]["decision"]
                                               else 1 if kv[1]["decision"] else 0))
     RV = 6  # ligne des titres de l'onglet À valider
     rang_val = {nom: RV + 1 + i for i, (nom, _) in enumerate(a_valider)}
@@ -491,7 +491,7 @@ def main():
     wv["A1"].font = Font(name=POLICE, bold=True, size=14)
     wv["A2"] = ("Pour chaque produit, choisir dans la colonne Décision. « Même produit » : pareil, même conditionnement. "
                 "« Autre conditionnement » : même produit, seul le format change (bouteille ou bidon) ; comparé au kg, "
-                "au litre ou à l'unité. « Qualité différente » : pas tout à fait le même produit (marque, qualité, "
+                "au litre ou à l'unité, rien à valider. « Qualité différente » : pas tout à fait le même produit (marque, qualité, "
                 "élevage) ; comparé quand même, mais signalé. « Ne pas comparer » : erreur, ce ne sont pas les mêmes "
                 "produits. Case vide : la proposition de Claude est gardée. Le Comparatif se met à jour tout de suite. "
                 "Ensuite, dire à Claude que c'est fait : il reporte les choix et met la page à jour.")
@@ -521,12 +521,13 @@ def main():
         wv.cell(rv, cedec, p["decision"] or None)
         wv.cell(rv, cecom, p["commentaire"] or None)
     dern_v = RV + len(a_valider)
-    # Compteurs : ce qui reste à trancher, hors produits proposés identiques
+    # Compteurs : ce qui reste à trancher, hors même produit et simple changement de conditionnement
     plage_dec, plage_prop = f"{L(cdec)}{RV + 1}:{L(cdec)}{max(dern_v, RV + 1)}", f"{L(cprop)}{RV + 1}:{L(cprop)}{max(dern_v, RV + 1)}"
     wv["A4"] = "Décisions prises"
     wv["B4"] = f"=COUNTIF({plage_dec},\"?*\")"
     wv["A5"] = "Encore à trancher"
-    wv["B5"] = f"=COUNTIFS({plage_dec},\"\",{plage_prop},\"<>{CHOIX['identique']}\")"
+    wv["B5"] = (f"=COUNTIFS({plage_dec},\"\",{plage_prop},\"<>{CHOIX['identique']}\","
+                f"{plage_prop},\"<>{CHOIX['equivalent']}\")")
     for c in ("A4", "A5"):
         wv[c].font = Font(name=POLICE, bold=True, size=10)
     for c in ("B4", "B5"):
@@ -549,7 +550,7 @@ def main():
         # Jaune : à trancher. Vert : tranché comme Claude le proposait. Orange : le client a changé d'avis.
         d0, p0 = f"${L(cdec)}{RV + 1}", f"${L(cprop)}{RV + 1}"
         wv.conditional_formatting.add(plage_dec, FormulaRule(
-            formula=[f'AND({d0}="",{p0}<>"{CHOIX["identique"]}")'], fill=PatternFill("solid", bgColor="FEF3C7")))
+            formula=[f'AND({d0}="",{p0}<>"{CHOIX["identique"]}",{p0}<>"{CHOIX["equivalent"]}")'], fill=PatternFill("solid", bgColor="FEF3C7")))
         wv.conditional_formatting.add(plage_dec, FormulaRule(
             formula=[f'AND({d0}<>"",{d0}={p0})'], fill=PatternFill("solid", bgColor="D1FAE5")))
         wv.conditional_formatting.add(plage_dec, FormulaRule(

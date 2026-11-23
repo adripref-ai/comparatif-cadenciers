@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 
-from validations import CHOIX, ONGLET, TYPES, change_par_le_client, decision_type, lire_decisions, refuser_si_ouvert
+from validations import CHOIX, ONGLET, SANS_VALIDATION, TYPES, change_par_le_client, decision_type, lire_decisions, refuser_si_ouvert
 
 
 def main():
@@ -81,9 +81,9 @@ def main():
         w.writerows(lignes)
 
     absents = [n for n, (t, c, e) in decisions.items() if n not in par_produit and (t or c) and change_par_le_client(t, c, e)]
-    # Les produits proposés identiques ne demandent pas de décision ; les autres, si
+    # Même produit, ou seul le conditionnement change : pas de décision à prendre ; les autres, si
     restants = [n for n, g in par_produit.items()
-                if TYPES.get(g[0]["type"].strip().lower()) != "identique" and g[0].get("valide") != "oui"]
+                if TYPES.get(g[0]["type"].strip().lower()) not in SANS_VALIDATION and g[0].get("valide") != "oui"]
     print(f"{repris} décision(s) reprise(s) sur {len(par_produit)} produits.")
     if changes:
         print("Choix différents de la proposition de Claude :")

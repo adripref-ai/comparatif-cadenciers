@@ -19,6 +19,9 @@ ONGLET = "À valider"
 CHOIX = {"identique": "Même produit", "equivalent": "Autre conditionnement", "qualite": "Qualité différente",
          "different": "Ne pas comparer"}
 DECISIONS = {v.lower(): k for k, v in CHOIX.items()}
+# Propositions qui ne demandent pas de décision du client : c'est le même produit. Pour « equivalent », seul le
+# conditionnement change : il est comparé au kg, au litre ou à l'unité et la différence est écrite dans la note.
+SANS_VALIDATION = ("identique", "equivalent")
 # Mots des versions 0.9.0 et 0.9.1, encore acceptés dans un classeur rempli avant
 DECISIONS.update({"remplaçable en cuisine": "equivalent", "pas comparable": "different"})
 # Libellés de la colonne Type du Comparatif

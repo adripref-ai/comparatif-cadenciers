@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 
-from validations import CHOIX, TYPES
+from validations import CHOIX, SANS_VALIDATION, TYPES
 
 
 def main():
@@ -64,7 +64,7 @@ def main():
 
     absents = [n for n in clics if n not in par_produit]
     restants = [n for n, g in par_produit.items()
-                if TYPES.get(g[0]["type"].strip().lower()) != "identique" and g[0].get("valide") != "oui"]
+                if TYPES.get(g[0]["type"].strip().lower()) not in SANS_VALIDATION and g[0].get("valide") != "oui"]
     print(f"{len(valides) + len(refuses)} clic(s) repris sur {len(par_produit)} produits : "
           f"{len(valides)} validé(s), {len(refuses)} refusé(s).")
     if refuses:

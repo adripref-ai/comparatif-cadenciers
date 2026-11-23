@@ -168,7 +168,7 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
   </section>
 
   <section class="vue" id="v-valider" hidden>
-    <p class="meta">Les produits que Claude a mis en face. Seule une personne du métier sait s'ils se valent : le client tranche avec les boutons ci-dessous, ou dans l'onglet « À valider » du classeur (Excel ou Google Sheets), puis Claude reporte ses choix ici. « Même produit » : pareil. « Autre conditionnement » : même produit, autre format, comparé au kg, au litre ou à l'unité. « Qualité différente » : comparé quand même, mais signalé. « Ne pas comparer » : erreur, jamais compté.</p>
+    <p class="meta">Les produits que Claude a mis en face. Seule une personne du métier sait s'ils se valent : le client tranche avec les boutons ci-dessous, ou dans l'onglet « À valider » du classeur (Excel ou Google Sheets), puis Claude reporte ses choix ici. « Même produit » : pareil. « Autre conditionnement » : même produit, autre format, comparé au kg, au litre ou à l'unité, rien à valider. « Qualité différente » : comparé quand même, mais signalé. « Ne pas comparer » : erreur, jamais compté.</p>
     <p class="meta" id="clicsaide" hidden>Plus rapide : cliquer sur « OK, validé » (la proposition de Claude est bonne) ou sur « Ne pas valider » (ces produits ne se comparent pas). Le clic est gardé. Claude le reporte ensuite dans le comparatif : les chiffres ne bougent pas tout de suite.</p>
     <div class="outils">
       <select id="vfil" aria-label="Afficher">
@@ -244,7 +244,8 @@ const clics = {}, ouverts = new Set();
 let base = null;
 const cle = nom => String(nom).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120) || 'produit';
 
-const aTrancher = p => p.proposition && !p.decision && p.proposition !== 'Même produit' && !clics[cle(p.nom)];
+// Même produit, ou seul le conditionnement change : rien à trancher
+const aTrancher = p => p.proposition && !p.decision && p.proposition !== 'Même produit' && p.proposition !== 'Autre conditionnement' && !clics[cle(p.nom)];
 // Un clic déjà reporté par Claude dans le comparatif n'est plus « en attente »
 const reporte = p => { const c = clics[cle(p.nom)]; return !!(c && p.decision && (c === 'ok' ? p.decision === p.proposition : p.decision === 'Ne pas comparer')); };
 const tranche = p => !!(p.proposition && (p.decision || clics[cle(p.nom)]));
@@ -281,7 +282,7 @@ function tags(p) {
   const t = [];
   if (p.gagnant === 'non comparable') return '<span class="tag neutre">Non comparable</span>';
   // Qualité différente : comparé quand même, mais le moins cher n'est pas tout à fait le même produit
-  t.push(p.type === 'qualité différente' ? '<span class="tag qual">Qualité différente</span>' : `<span class="tag neutre">${esc(p.type)}</span>`);
+  t.push(p.type === 'qualité différente' ? '<span class="tag qual">Qualité différente</span>' : p.type === 'autre conditionnement' ? '<span class="tag neutre">Conditionnement différent</span>' : `<span class="tag neutre">${esc(p.type)}</span>`);
   if (p.solide) t.push('<span class="tag ok">Solide</span>');
   if (p.ancien) t.push('<span class="tag warn">Prix de plus de 6 mois</span>');
   if (p.mois > 3) t.push(`<span class="tag warn">${String(p.mois).replace('.', ',')} mois entre les prix</span>`);
@@ -316,7 +317,7 @@ function carte(p) {
       <td><span class="tag ${o.fiable === 'à vérifier' ? 'warn' : o.fiable === 'vu sur facture' ? 'ok' : 'neutre'}">${esc(o.fiable)}</span></td></tr>`).join('');
   return `<details class="p ${hors ? 'hors' : ''}" style="${w}">
     <summary>
-      <div class="nom"><b>${esc(p.nom)}</b><small>${esc(p.unite)}</small></div>
+      <div class="nom"><b>${esc(p.nom)}</b><small>${esc(p.unite)}</small>${p.type === 'autre conditionnement' && p.note ? `<small>${esc(p.note)}</small>` : ''}</div>
       <div class="echelle">${barres}</div>
       <div class="verdict">${verdict}<div class="tags">${tags(p)}</div></div>
     </summary>
@@ -407,7 +408,7 @@ function dessinerValidation() {
     const statut = (clic && !reporte(p) ? `<span class="tag ${clic === 'ok' ? 'ok' : 'bad'}">${clic === 'ok' ? 'OK, validé' : 'Non validé'} sur la page</span>` : '')
       + (p.decision
       ? `<span class="tag ${p.decision === p.proposition ? 'ok' : 'warn'}">Client : ${esc(p.decision)}</span>`
-      : clic ? '' : aTrancher(p) ? '<span class="tag warn">À trancher</span>' : '<span class="tag neutre">Pas de doute</span>');
+      : clic ? '' : aTrancher(p) ? '<span class="tag warn">À trancher</span>' : `<span class="tag neutre">${p.proposition === 'Autre conditionnement' ? 'Conditionnement différent, rien à valider' : 'Pas de doute'}</span>`);
     const boutons = !base ? '' : `<div class="clics" data-nom="${esc(p.nom)}">
           <button class="ok" data-clic="ok" aria-pressed="${clic === 'ok'}">OK, validé</button>
           <button class="bad" data-clic="refus" aria-pressed="${clic === 'refus'}">Ne pas valider</button>

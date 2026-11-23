@@ -189,6 +189,11 @@ def main():
     wb = openpyxl.load_workbook(classeur)
     verifier(wb.sheetnames == ["Lisez-moi", "À valider", "Comparatif", "Meilleurs prix", "Mercuriale", "Détail",
                                "Mercuriale contre facture", "Historique", "Sans équivalent"], f"onglets : {wb.sheetnames}")
+    # Seul le conditionnement change (Farine, Sucre) : rien à faire valider
+    verifier("<>Autre conditionnement" in str(wb["À valider"]["B5"].value), "un autre conditionnement ne doit pas compter comme à trancher")
+    html = (ici / "page-comparatif.html").read_text(encoding="utf-8")
+    verifier("p.proposition !== 'Autre conditionnement'" in html and "Conditionnement différent" in html,
+             "la page doit signaler le conditionnement différent sans demander de validation")
     verifier(p["Farine T55"]["gagnant"] == "Alpha" and p["Farine T55"]["solide"], f"Farine : {p['Farine T55']}")
     verifier(p["Beurre doux"]["gagnant"] == "non comparable", "Beurre doux devrait être non comparable")
     verifier(p["Crème liquide"]["type"] == "qualité différente" and p["Crème liquide"]["gagnant"] == "Beta",
