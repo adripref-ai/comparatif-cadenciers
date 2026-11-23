@@ -105,6 +105,13 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
 .tableau{background:var(--panel);border:1px solid var(--line);border-radius:10px}
 .tableau table{min-width:760px}
 .point{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--c);margin-right:6px}
+.clics{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:3px}
+.clics button{border:1.5px solid var(--k);background:var(--panel);color:var(--k);font:inherit;font-size:14px;font-weight:700;border-radius:8px;padding:6px 11px;cursor:pointer;min-height:36px}
+.clics button.lien{border:0;font-weight:400;color:var(--muted);padding:6px}
+.clics small:empty{display:none}
+.clics button[aria-pressed="true"]{background:var(--k);color:var(--on)}
+.clics button:disabled{opacity:.55;cursor:default}
+.clics small{color:var(--muted)}
 .vide{padding:26px;text-align:center;color:var(--muted);background:var(--panel);border:1px dashed var(--line);border-radius:10px}
 .provisoire{background:var(--bad-soft);color:var(--bad);font-weight:700;border-radius:8px;padding:9px 13px}
 .limites{color:var(--muted);font-size:14px;max-width:80ch}
@@ -161,7 +168,8 @@ td.r{font-family:var(--chiffre);font-size:13.5px;white-space:nowrap}
   </section>
 
   <section class="vue" id="v-valider" hidden>
-    <p class="meta">Les produits que Claude a mis en face. Seule une personne du métier sait s'ils se valent : le client tranche dans l'onglet « À valider » du classeur (Excel ou Google Sheets), puis Claude reporte ses choix ici. « Même produit » : pareil. « Autre conditionnement » : même produit, autre format, comparé au kg, au litre ou à l'unité. « Qualité différente » : comparé quand même, mais signalé. « Ne pas comparer » : erreur, jamais compté.</p>
+    <p class="meta">Les produits que Claude a mis en face. Seule une personne du métier sait s'ils se valent : le client tranche avec les boutons ci-dessous, ou dans l'onglet « À valider » du classeur (Excel ou Google Sheets), puis Claude reporte ses choix ici. « Même produit » : pareil. « Autre conditionnement » : même produit, autre format, comparé au kg, au litre ou à l'unité. « Qualité différente » : comparé quand même, mais signalé. « Ne pas comparer » : erreur, jamais compté.</p>
+    <p class="meta" id="clicsaide" hidden>Plus rapide : cliquer sur « OK, validé » (la proposition de Claude est bonne) ou sur « Ne pas valider » (ces produits ne se comparent pas). Le clic est gardé. Claude le reporte ensuite dans le comparatif : les chiffres ne bougent pas tout de suite.</p>
     <div class="outils">
       <select id="vfil" aria-label="Afficher">
         <option value="trancher">À trancher</option>
@@ -230,13 +238,26 @@ const ETATS = [
 ];
 
 $('titre').textContent = D.client;
-const aTrancher = p => p.proposition && !p.decision && p.proposition !== 'Même produit';
+// Boutons « OK, validé » et « Ne pas valider » : les clics sont gardés dans la base de la page publiée.
+// Sans cette base (fichier ouvert sur le disque, lecteur non connecté), les boutons n'apparaissent pas.
+const clics = {}, ouverts = new Set();
+let base = null;
+const cle = nom => String(nom).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120) || 'produit';
+
+const aTrancher = p => p.proposition && !p.decision && p.proposition !== 'Même produit' && !clics[cle(p.nom)];
+// Un clic déjà reporté par Claude dans le comparatif n'est plus « en attente »
+const reporte = p => { const c = clics[cle(p.nom)]; return !!(c && p.decision && (c === 'ok' ? p.decision === p.proposition : p.decision === 'Ne pas comparer')); };
+const tranche = p => !!(p.proposition && (p.decision || clics[cle(p.nom)]));
 const nbTrancher = D.produits.filter(aTrancher).length;
 $('prov').hidden = !D.provisoire;
-if (nbTrancher) {
-  $('provtxt').textContent = `Résultat provisoire : ${nbTrancher} correspondance${nbTrancher > 1 ? 's' : ''} sur ${D.produits.length} reste${nbTrancher > 1 ? 'nt' : ''} à valider avec le client.`;
-  $('provvoir').hidden = false;
+function bandeau() {  // suit les clics faits sur la page
+  const n = D.produits.filter(aTrancher).length, c = D.produits.filter(p => clics[cle(p.nom)] && !reporte(p)).length;
+  if (n) $('provtxt').textContent = `Résultat provisoire : ${n} correspondance${n > 1 ? 's' : ''} sur ${D.produits.length} reste${n > 1 ? 'nt' : ''} à valider avec le client.`;
+  else if (nbTrancher) $('provtxt').textContent = 'Résultat provisoire : tout est tranché sur la page. Claude doit encore reporter ces choix dans le comparatif.';
+  if (n && c) $('provtxt').textContent += ` ${c} choix fait${c > 1 ? 's' : ''} sur la page, pas encore reporté${c > 1 ? 's' : ''}.`;
+  $('provvoir').hidden = !nbTrancher;
 }
+bandeau();
 if (!D.produits.some(p => p.proposition)) $('o-valider').hidden = true;
 $('meta').textContent = `${D.produits.length} produits, ${D.fournisseurs.length} fournisseurs. Prix HT ramenés au kg, au litre ou à l'unité indiquée. Touche un produit pour voir d'où viennent ses prix.`;
 
@@ -374,21 +395,29 @@ function dessinerMercuriale() {
 
 function dessinerValidation() {
   const fil = $('vfil').value;
-  const l = D.produits.filter(p => p.proposition && (!fil || (fil === 'trancher' ? aTrancher(p) : !!p.decision)));
-  $('vcompte').textContent = `${l.length} produit${l.length > 1 ? 's' : ''} · ${nbTrancher} à trancher · ${D.produits.filter(p => p.decision).length} tranché${D.produits.filter(p => p.decision).length > 1 ? 's' : ''}`;
+  document.querySelectorAll('#vliste details[open]').forEach(d => ouverts.add(d.dataset.nom));
+  const l = D.produits.filter(p => p.proposition && (!fil || (fil === 'trancher' ? aTrancher(p) : tranche(p))));
+  $('vcompte').textContent = `${l.length} produit${l.length > 1 ? 's' : ''} · ${D.produits.filter(aTrancher).length} à trancher · ${D.produits.filter(tranche).length} tranché${D.produits.filter(tranche).length > 1 ? 's' : ''}`;
   if (!l.length) {
-    $('vliste').innerHTML = `<div class="vide">${fil === 'trancher' ? 'Tout est tranché : le comparatif peut être validé.' : 'Rien à afficher pour ce choix.'}</div>`;
+    $('vliste').innerHTML = `<div class="vide">${fil === 'trancher' ? (Object.keys(clics).length ? 'Tout est tranché. Dis-le à Claude : il reporte les choix dans le comparatif.' : 'Tout est tranché : le comparatif peut être validé.') : 'Rien à afficher pour ce choix.'}</div>`;
     return;
   }
   $('vliste').innerHTML = l.map(p => {
-    const statut = p.decision
+    const clic = clics[cle(p.nom)];
+    const statut = (clic && !reporte(p) ? `<span class="tag ${clic === 'ok' ? 'ok' : 'bad'}">${clic === 'ok' ? 'OK, validé' : 'Non validé'} sur la page</span>` : '')
+      + (p.decision
       ? `<span class="tag ${p.decision === p.proposition ? 'ok' : 'warn'}">Client : ${esc(p.decision)}</span>`
-      : aTrancher(p) ? '<span class="tag warn">À trancher</span>' : '<span class="tag neutre">Pas de doute</span>';
+      : clic ? '' : aTrancher(p) ? '<span class="tag warn">À trancher</span>' : '<span class="tag neutre">Pas de doute</span>');
+    const boutons = !base ? '' : `<div class="clics" data-nom="${esc(p.nom)}">
+          <button class="ok" data-clic="ok" aria-pressed="${clic === 'ok'}">OK, validé</button>
+          <button class="bad" data-clic="refus" aria-pressed="${clic === 'refus'}">Ne pas valider</button>
+          ${clic ? '<button class="lien" data-clic="">Annuler</button>' : ''}
+          <small>${clic && !reporte(p) ? 'Choix gardé. Claude le reportera dans le comparatif.' : ''}</small></div>`;
     const lignes = p.offres.map(o => `<tr><td><span class="point" style="${couleur(o.f)}"></span>${esc(o.f)}</td><td>${esc(o.lib)}<br><small>Réf. ${esc(o.ref)}</small></td></tr>`).join('');
-    return `<details class="p"><summary>
+    return `<details class="p"${ouverts.has(p.nom) ? ' open' : ''} data-nom="${esc(p.nom)}"><summary>
         <div class="nom"><b>${esc(p.nom)}</b><small>${esc(p.famille)}</small></div>
         <div class="echelle"><small>${esc(p.note)}</small></div>
-        <div class="verdict"><span class="gain">Claude propose : <strong>${esc(p.proposition)}</strong></span><div class="tags">${statut}</div></div>
+        <div class="verdict"><span class="gain">Claude propose : <strong>${esc(p.proposition)}</strong></span><div class="tags">${statut}</div>${boutons}</div>
       </summary>
       <div class="detail">
         ${p.commentaire ? `<p>Commentaire du client : ${esc(p.commentaire)}</p>` : ''}
@@ -416,6 +445,31 @@ $('raz').addEventListener('click', () => { filtre.gagnant = filtre.etat = null; 
 ['q', 'fam', 'tri'].forEach(i => $(i).addEventListener('input', dessinerListe));
 ['ffo', 'fdiff'].forEach(i => $(i).addEventListener('input', dessinerFactures));
 $('vfil').addEventListener('input', dessinerValidation);
+$('vliste').addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.nom && !d.open) ouverts.delete(d.dataset.nom); }, true);
+$('vliste').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-clic]'); if (!b || !base) return;
+  e.preventDefault();  // le bouton est dans la ligne du produit : ne pas l'ouvrir ni la fermer
+  const zone = b.closest('.clics'), nom = zone.dataset.nom, doc = base.collection('validations').doc(cle(nom));
+  ouverts.add(nom);
+  zone.querySelectorAll('button').forEach(x => x.disabled = true);
+  try {
+    if (b.dataset.clic) await doc.set({ produit: nom, choix: b.dataset.clic, quand: new Date().toISOString() });
+    else await doc.delete();
+  } catch (err) {
+    zone.querySelectorAll('button').forEach(x => x.disabled = false);
+    zone.querySelector('small').textContent = 'Le choix n\'a pas pu être gardé. Il faut avoir le droit de modifier cette page.';
+  }
+});
+(async () => {
+  if (!window.claude || !window.claude.use || !D.produits.some(p => p.proposition)) return;
+  const db = await window.claude.use('db');
+  if (!db) return;
+  db.collection('validations').onSnapshot(snap => {
+    for (const k of Object.keys(clics)) delete clics[k];
+    for (const d of snap.docs) { const x = d.data() || {}; if (x.choix === 'ok' || x.choix === 'refus') clics[d.id] = x.choix; }
+    base = db; $('clicsaide').hidden = false; dessinerValidation(); bandeau();
+  }, () => {});
+})();
 $('provvoir').addEventListener('click', () => { $('vfil').value = 'trancher'; dessinerValidation(); montrer('valider'); });
 
 $('fam').innerHTML = '<option value="">Toutes les familles</option>' + [...new Set(D.produits.map(p => p.famille))].map(f => `<option>${esc(f)}</option>`).join('');

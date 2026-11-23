@@ -144,6 +144,34 @@ def reconstruire(ici):
     return page(ici)
 
 
+def clics_de_la_page():
+    """Boutons « OK, validé » et « Ne pas valider » de la page : leurs clics se reportent dans appariements.csv."""
+    ici = Path(tempfile.mkdtemp(prefix="essai-clics-")) / "Essai"
+    creer_client(ici)
+    lancer("lire_cadenciers.py", ici)
+    lancer("controler_factures.py", ici)
+    reconstruire(ici)
+    html = (ici / "page-comparatif.html").read_text(encoding="utf-8")
+    verifier('data-clic="ok"' in html and 'data-clic="refus"' in html, "la page n'a pas ses deux boutons de validation")
+    verifier("claude.use('db')" in html, "la page ne garde pas les clics")
+    (ici / "clics.json").write_text(json.dumps([
+        {"id": "creme-liquide", "data": {"produit": "Crème liquide", "choix": "ok"}},
+        {"id": "sel-fin", "data": {"produit": "Sel fin", "choix": "refus"}},
+        {"id": "disparu", "data": {"produit": "Produit retiré", "choix": "ok"}}]), encoding="utf-8")
+    sortie = lancer("reprendre_clics.py", ici, ici / "clics.json")
+    a = {x["produit"]: x for x in appariements(ici)}
+    verifier(a["Crème liquide"]["type"] == "qualite" and a["Crème liquide"]["valide"] == "oui", f"clic OK non reporté : {a['Crème liquide']}")
+    verifier(a["Sel fin"]["type"] == "different" and a["Sel fin"]["valide"] == "oui", f"clic de refus non reporté : {a['Sel fin']}")
+    verifier("Produit retiré" in sortie and "ATTENTION" in sortie, "clic sur un produit absent non signalé :\n" + sortie)
+    p = reconstruire(ici)
+    verifier(p["Sel fin"]["gagnant"] == "non comparable", f"Sel fin refusé devrait être non comparable : {p['Sel fin']['gagnant']}")
+    verifier(p["Crème liquide"]["decision"] == "Qualité différente", f"Crème validée : {p['Crème liquide'].get('decision')}")
+    (ici / "clics.json").write_text('[{"produit": "Sel fin", "choix": "peut-être"}]', encoding="utf-8")
+    lancer("reprendre_clics.py", ici, ici / "clics.json", attendu=1)
+    if not echecs:
+        shutil.rmtree(ici.parent)
+
+
 def main():
     avec_excel = "--excel" in sys.argv
     ici = Path(tempfile.mkdtemp(prefix="essai-comparatif-")) / "Essai"
@@ -276,6 +304,7 @@ def main():
         else:
             print("Calcul impossible ici, comparaison classeur et page sautée : " + reponse.strip())
 
+    clics_de_la_page()
     if echecs:
         print(f"{len(echecs)} ÉCHEC(S) (dossier : {ici})")
         print("\n---\n".join(echecs))
